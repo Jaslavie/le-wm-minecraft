@@ -20,10 +20,10 @@ Each MineRL trajectory lives under `data/MineRLTreechop-v0/<trajectory>/` with `
 - **Size**: 210 trajectories, 453,496 total timesteps.
 - **Video size**: 64 x 64 RGB
 
-Each cleaned action trajectory is shaped `(timesteps, 8)`, where the x-axis columns are:
+Each cleaned action trajectory is shaped `(timesteps, 10)`, where the x-axis columns are:
 
 ```
-[ forward, left, back, right, jump, sneak, sprint, attack ]
+[ forward, left, back, right, jump, sneak, sprint, attack , camera, camera]
 ```
 
 Below, the character is moving forward and left during the first timestamp.

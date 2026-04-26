@@ -12,3 +12,6 @@ ENV/
 build/
 dist/
 *.egg-info/
+
+# training data
+mineRL_training.h5

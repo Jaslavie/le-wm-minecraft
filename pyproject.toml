@@ -10,4 +10,5 @@ dependencies = [
     "numpy",
     "cv2",
     "matplotlib",
+    "stable-worldmodel",
 ]
