@@ -11,11 +11,11 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 ```
 
 1. Download dataset into your local repo
-2. Run the nn.ipynb file in full. This loads the processed data into the data folder
+2. Run the nn.ipynb file in full. This loads the processed data into the data folder. This is necesary for training
 
 ## Training data
 
-Each MineRL trajectory lives under `data/MineRLTreechop-v0/<trajectory>/` with `recording.mp4`, `rendered.npz`, `metadata.json`, and processed `actions.npy`.
+We use the MineRL dataset for training. This looksl like this: `data/MineRLTreechop-v0/<trajectory>/` with `recording.mp4`, `rendered.npz`, `metadata.json`, and processed `actions.npy`.
 
 - **Size**: 210 trajectories, 453,496 total timesteps.
 - **Video size**: 64 x 64 RGB
