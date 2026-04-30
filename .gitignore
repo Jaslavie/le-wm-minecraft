@@ -15,3 +15,5 @@ dist/
 
 # training data
 mineRL_training.h5
+
+outputs

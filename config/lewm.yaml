@@ -1,0 +1,6 @@
+defaults:
+  - _self_
+
+config_name: ${hydra:job.name}
+
+patch_size: 8
