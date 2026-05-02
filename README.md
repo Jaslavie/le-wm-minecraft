@@ -12,6 +12,11 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 
 1. Download dataset into your local repo
 2. Run the nn.ipynb file in full. This loads the processed data into the data folder. This is necesary for training
+3. Running tests
+
+```
+python -m pytest
+```
 
 ### Architecture
 

@@ -12,4 +12,8 @@ dependencies = [
     "matplotlib",
     "stable-worldmodel",
     "hydra",
+    "pytest",
 ]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]

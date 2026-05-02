@@ -1,5 +1,6 @@
 ########
 # Ti-ViT implementation from scratch
+# Expected input dimensions: [B, 3, 64, 64]
 ########
 import torch
 import torch.nn as nn
@@ -162,6 +163,7 @@ def main(cfg: DictConfig):
     img = img.convert('RGB')
     convertor = transforms.ToTensor()
     img_t = convertor(img).unsqueeze(0) # add dim to beginning to represent batch
+    print(img_t.shape)
 
     with torch.no_grad():
         embed_output = vit(img_t)
