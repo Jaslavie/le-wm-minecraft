@@ -3,15 +3,24 @@ defaults:
 
 config_name: ${hydra:job.name}
 
-# == image details ==
-# note: the lewm paper implements 14 x 14 patch size
-image_size: 64
-patch_size: 8
-embedding_dim: 192
-num_channels: 3
-num_patches: 64 # 8 x 8
+# == Shared ==
+action_dim: 8
 
-# == model details ==
-attention_heads: 3
-mlp_hidden_nodes: 768 # 192 x 4 (for scaling laws)
-transformer_blocks: 12
+# == ViT encoder hyperparameters ==
+vit:
+  image_size: 64
+  patch_size: 8 # LeWM paper uses 14; this project currently uses 8 for 64x64 frames.
+  num_channels: 3
+  num_patches: 64 # (64 / 8) x (64 / 8)
+
+  embedding_dim: 192
+  attention_heads: 3
+  mlp_hidden_nodes: 768 #  192 x 4 (for scaling laws)
+  transformer_blocks: 12
+
+# == Predictor hyperparameters ==
+predictor:
+  transformer_blocks: 6
+  attention_heads: 16
+  dropout: 0.10
+  history_len: 8 # causal mask sees past 8 timestamps
