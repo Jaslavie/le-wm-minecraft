@@ -78,7 +78,7 @@ class Predictor(nn.Module):
     """
     The predictor applies the transformer blocks to autoregressively predict the next observation
     embedding conditioned on previous actions. Each transformer block evolves the prediction of the next state.
-        Input: observation embedding z_t
+        Input: observation embedding z_t, action vector at timestamp t
         Output: predicted observation embedding z_t+1
     """
     def __init__(self, action_dim, embedding_dim, attention_heads, mlp_hidden_nodes, dropout, history_len, transformer_blocks):
