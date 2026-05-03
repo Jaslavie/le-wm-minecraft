@@ -81,7 +81,8 @@ def test_predictor_output(predictor, vit):
 
     with h5py.File("mineRL_training.h5", "r") as f:
         # test on 8 consecutive observations to match history length
-        pixels = f['pixels'][0:8]
+        # include 1 extra representing the next observation to target for prediction
+        pixels = f['pixels'][0:9]
         pixels_t = torch.tensor(pixels).float() / 255
         print("pixels_t shape", pixels_t.shape)
 
@@ -93,12 +94,12 @@ def test_predictor_output(predictor, vit):
         z = vit(pixels_t) # [8, 192]
     
     # normalize
-    actions_t = torch.tensor(actions[:1, :8]).float().unsqueeze(0)
-    obs_t = z.unsqueeze(0)
+    actions_t = torch.tensor(actions[:8]).float().unsqueeze(0) # [1, 8, 8]
+    obs_t = z[:8].unsqueeze(0) # [1, 8, 192]
     print("embedding shape", obs_t.shape, "actions shape", actions_t.shape)
 
     # run through prediction
-    obs_target = z[-1].unsqueeze(0)
+    obs_target = z[-1].unsqueeze(0) # 9th item
     obs_pred = predictor(obs_t, actions_t)
     
     print(f"Predicted obs embedding: {obs_pred[:10]}, Target obs embedding: {obs_target[:10]}")
