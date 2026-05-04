@@ -6,6 +6,11 @@ config_name: ${hydra:job.name}
 # == Shared ==
 action_dim: 8
 
+sigreg:
+  num_proj: 1024
+  factor: 1.0
+  phi: 0.606 # frequency of normal dist. for epps pulley test
+
 # == ViT encoder hyperparameters ==
 vit:
   image_size: 64
