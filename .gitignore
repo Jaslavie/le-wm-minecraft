@@ -1,0 +1,17 @@
+/data
+venv
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+env/
+ENV/
+.ipynb_checkpoints/
+build/
+dist/
+*.egg-info/
+
+# training data
+mineRL_training.h5
