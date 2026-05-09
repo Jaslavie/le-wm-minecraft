@@ -4,11 +4,10 @@ Wrapper for LeWM
 import torch.nn as nn
 from vit import tinyViT
 from predictor import Predictor
-import hydra
+from modules import ActionEmbedder
+
 import torch
 import torch.nn.functional as F
-from omegaconf import DictConfig
-from statistics import mean
 
 class SIGReg(nn.Module):
     """
@@ -46,41 +45,70 @@ class SIGReg(nn.Module):
         
 
 
-@hydra.main(version_base=None, config_path="./config", config_name="lewm")
 class LeWM(nn.Module):
     """
     obs: (B, T, C=3, H=64, W=64) raw pixels sequence
     actions: (B, T, A=10) action sequence
     lambd: (float) SIGReg loss weight
     """
-    def __init__(self, encoder, predictor, cfg: DictConfig):
+    def __init__(self, 
+        image_size, 
+        patch_size, 
+        embedding_dim, 
+        num_channels, 
+        num_patches, 
+        attention_heads, 
+        mlp_hidden_nodes, 
+        transformer_blocks, 
+        action_dim, 
+        dropout, 
+        num_proj, 
+        factor, 
+        phi,
+    ):
         super().__init__()
+        # 192 dim embedding of img
         self.encoder =  tinyViT( 
-            image_size=cfg.vit.image_size,
-            patch_size=cfg.vit.patch_size,
-            embedding_dim=cfg.vit.embedding_dim,
-            num_channels=cfg.vit.num_channels,
-            num_patches=cfg.vit.num_patches,
-            attention_heads=cfg.vit.attention_heads,
-            mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
-            transformer_blocks=cfg.vit.transformer_blocks
+            image_size=image_size,
+            patch_size=patch_size,
+            embedding_dim=embedding_dim,
+            num_channels=num_channels,
+            num_patches=num_patches,
+            attention_heads=attention_heads,
+            mlp_hidden_nodes=mlp_hidden_nodes,
+            transformer_blocks=transformer_blocks
         )
         self.predictor = Predictor(
-            action_dim=cfg.action_dim,
-            embedding_dim=cfg.vit.embedding_dim,
-            attention_heads=cfg.predictor.attention_heads,
-            mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
-            dropout=cfg.predictor.dropout,
-            history_len=cfg.predictor.history_len,
-            transformer_blocks=cfg.predictor.transformer_blocks
+            embedding_dim=embedding_dim,
+            attention_heads=attention_heads,
+            mlp_hidden_nodes=mlp_hidden_nodes,
+            dropout=dropout,
+            transformer_blocks=transformer_blocks,
         )
+        # 192 dim embedding of actions
+        self.action_embedder = ActionEmbedder(
+            action_dim=action_dim,
+            embedding_dim=embedding_dim,
+        )
+        self.sigreg = SIGReg(num_proj, factor, phi)
+    
     def forward(self, pixels, actions, lambd):
-        emb = self.encoder(pixels) # (B, T, D=192)
-        next_emb = self.predictor(emb, actions) #(B, T, D=10)
+        B, T, C, H, W = pixels.shape # B, T, C, H, W
 
-        # next-embedding prediction loss
-        pred_loss = F.mse_loss(emb[:, 1:] - next_emb[:, :-1])
+        # combine batch and time into one dimension for conv2d
+        # reshape back to og dimension after converting to embedding
+        emb = self.encoder(pixels.reshape(B * T, C, H, W))
+        emb = emb.reshape(B, T, -1)
+        action_emb = self.action_embedder(actions)
+
+        # predict the next embedding for every non-final timestep.
+        next_emb_pred = self.predictor(emb[:, :-1], action_emb[:, :-1])
+        next_emb_target = emb[:, 1:] # actual next state
+
+        # get overall loss
+        pred_loss = F.mse_loss(next_emb_pred, next_emb_target)
+
         # step-wise sigreg (anti-collapse)
-        sigreg_loss = mean(SIGReg(emb.transpose(0, 1)))
+        sigreg_loss = self.sigreg(emb)
         
         return pred_loss + lambd * sigreg_loss

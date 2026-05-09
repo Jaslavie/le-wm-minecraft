@@ -4,12 +4,15 @@ defaults:
 config_name: ${hydra:job.name}
 
 # == Shared ==
-action_dim: 8
+action_dim: 10
+batch_size: 128
+sub_trajectory: 8 # 8 frames and 8 actions
 
 sigreg:
   num_proj: 1024
   factor: 1.0
   phi: 0.606 # frequency of normal dist. for epps pulley test
+  lambd: 0.01
 
 # == ViT encoder hyperparameters ==
 vit:
@@ -29,3 +32,7 @@ predictor:
   attention_heads: 16
   dropout: 0.10
   history_len: 8 # causal mask sees past 8 timestamps
+
+optimizer:
+  lr: 5e-5
+  weight_decay: 1e-3
