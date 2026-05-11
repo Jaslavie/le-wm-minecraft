@@ -1,0 +1,17 @@
+defaults:
+  - _self_
+
+config_name: ${hydra:job.name}
+
+# == image details ==
+# note: the lewm paper implements 14 x 14 patch size
+image_size: 64
+patch_size: 8
+embedding_dim: 192
+num_channels: 3
+num_patches: 64 # 8 x 8
+
+# == model details ==
+attention_heads: 3
+mlp_hidden_nodes: 768 # 192 x 4 (for scaling laws)
+transformer_blocks: 12
