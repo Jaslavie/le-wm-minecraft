@@ -6,13 +6,16 @@ from lewm import LeWM
 import torch
 from torch.optim import AdamW
 from torch.utils.data import random_split, DataLoader
+from torch.utils.data import Subset
 
 @hydra.main(version_base=None, config_path="./config", config_name="lewm")
-def train(cfg: DictConfig):
+def train_model(cfg: DictConfig):
     """
     The primary training parameters are random projections M and 
     the regularization weight λ (how much to prioritize stability)
     """
+    device = torch.device("cuda" if torch.cuda.is_available() else "mps")
+
     # Load and normalize original dataset
     ds = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
 
@@ -31,16 +34,26 @@ def train(cfg: DictConfig):
 
     randomizer = torch.Generator().manual_seed(42)
 
-    # training size is split based on the episode length
-    num_episodes = len(dataset)
+    # split training data by samples
+    num_episodes = len(dataset.lengths)
     train_size = int(0.80 * num_episodes)
-    val_size = num_episodes - train_size
     
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=randomizer)
-    print(f"training size: {train_size}, validation size: {val_size}")
+    train_indices = [
+        i for i, (ep_i, _) in enumerate(dataset.clip_indices)
+        if ep_i <= train_size
+    ]
+    val_indices = [
+        i for i, (ep_i, _) in enumerate(dataset.clip_indices)
+        if ep_i > train_size
+    ]
+
+    train_dataset = Subset(dataset, train_indices)
+    val_dataset = Subset(dataset, val_indices)
     
     train = DataLoader(train_dataset, cfg.batch_size, shuffle=True, drop_last=True, generator=randomizer)
     val = DataLoader(val_dataset, cfg.batch_size, shuffle=False, drop_last=True)
+
+    print(f"training size: {train_size}, validation size: {num_episodes - train_size}")
 
     # init world  model
     lewm = LeWM(
@@ -57,42 +70,47 @@ def train(cfg: DictConfig):
         num_proj=cfg.sigreg.num_proj,
         factor=cfg.sigreg.factor,
         phi=cfg.sigreg.phi
-    )
+    ).to(device)
     optimizer = AdamW(lewm.parameters(), lr=cfg.optimizer.lr, weight_decay=cfg.optimizer.weight_decay)
     
-    # run training over batches
-    training_loss = 0
-    for i, data in enumerate(train):
-        # each data sample contains actions and pictures
-        action = data["action"]
-        pixels = data["pixels"]
+    # run training over epochs
+    for epoch in range(cfg.epochs):
+        training_loss = 0
+        validation_loss = 0
 
-        # forward pass
-        optimizer.zero_grad()
-        loss = lewm(pixels, action, cfg.sigreg.lambd)
-        loss.backward()
-        optimizer.step()
-        training_loss += loss.item()
+        # training
+        for i, data in enumerate(train):
+            # each data sample contains actions and pictures
+            action = data["action"].to(device)
+            pixels = data["pixels"].to(device)
 
-        # print loss every 100 batches
-        if i % 100 == 0:
-            print(f"Training loss: {loss.item()}")
-    
-    for i, data in enumerate(val):
-        # each data sample contains actions and pictures
+            # forward pass
+            loss = lewm(pixels, action, cfg.sigreg.lambd)
+
+            # backward pass
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            training_loss += loss.item()
+
+            # print loss every 100 batches
+            if i % 100 == 0:
+                print(f"Training loss for {i} / {len(train)}: {loss.item()}")
+
+        # validation
+        with torch.no_grad():
+            for i, data in enumerate(val):
+                action = data["action"]
+                pixels = data["pixels"]
+                loss = lewm(pixels, action, cfg.sigreg.lambd)
+                validation_loss += loss.item()
         
 
-        # forward pass
-        loss = lewm(pixels, action, cfg.sigreg.lambd)
-        validation_loss += loss.item()
-        
-        if i % 100 == 0:
-            print(f"Validation loss: {loss.item()}")
-    
-    print(f"Training loss: {training_loss / len(train)}")
-    print(f"Validation loss: {validation_loss / len(val)}")
+        print(f"Total Training loss for epoch {epoch}: {training_loss / len(train)}")
+        print(f"Total Validation loss for epoch {epoch}: {validation_loss / len(val)}")
 
 
 
 if __name__=="__main__":
-    train()
+    train_model()

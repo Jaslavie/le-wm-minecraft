@@ -6,6 +6,7 @@ config_name: ${hydra:job.name}
 # == Shared ==
 action_dim: 10
 batch_size: 128
+epochs: 10
 sub_trajectory: 8 # 8 frames and 8 actions
 
 sigreg:

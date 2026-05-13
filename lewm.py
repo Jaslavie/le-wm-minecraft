@@ -27,7 +27,7 @@ class SIGReg(nn.Module):
     def forward(self, obs):
         # create a matrix of random projections per dimension (192, 1024)
         # normalize each column to add up to 1 (unit vector property)
-        A = torch.randn(obs.size(-1), self.num_proj)
+        A = torch.randn(obs.size(-1), self.num_proj).to(obs.device)
         A = A / A.norm(p=2, dim=0)
 
         # map projection to embeddings at each timestamp (T, B, 1024)
@@ -110,5 +110,7 @@ class LeWM(nn.Module):
 
         # step-wise sigreg (anti-collapse)
         sigreg_loss = self.sigreg(emb)
+
+        total_loss = pred_loss + lambd * sigreg_loss
         
-        return pred_loss + lambd * sigreg_loss
+        return total_loss
