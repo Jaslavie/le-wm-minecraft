@@ -1,12 +1,12 @@
 import stable_worldmodel as swm
 from utils import normalize_columns
 import hydra
-from omegaconf import DictConfig, OmegaConf
-from lewm import LeWM
+from lewm import LeWM, compute_loss, SIGReg
 import torch
 from torch.optim import AdamW
-from torch.utils.data import random_split, DataLoader
+from torch.utils.data import DataLoader
 from torch.utils.data import Subset
+from omegaconf import DictConfig
 
 @hydra.main(version_base=None, config_path="./config", config_name="lewm")
 def train_model(cfg: DictConfig):
@@ -55,6 +55,13 @@ def train_model(cfg: DictConfig):
 
     print(f"training size: {train_size}, validation size: {num_episodes - train_size}")
 
+    # init loss
+    sigreg = SIGReg(
+        num_proj=cfg.sigreg.num_proj,
+        factor=cfg.sigreg.factor,
+        phi=cfg.sigreg.phi
+    )
+    
     # init world  model
     lewm = LeWM(
         image_size=cfg.vit.image_size,
@@ -85,7 +92,14 @@ def train_model(cfg: DictConfig):
             pixels = data["pixels"].to(device)
 
             # forward pass
-            loss = lewm(pixels, action, cfg.sigreg.lambd)
+            model_out = lewm(pixels, action)
+            loss = compute_loss(
+                next_emb_pred=model_out[0], 
+                next_emb_target=model_out[1],
+                emb= model_out[2],
+                sigreg= sigreg,
+                lambd=cfg.sigreg.lambd,
+            )
 
             # backward pass
             optimizer.zero_grad()
@@ -106,6 +120,13 @@ def train_model(cfg: DictConfig):
                 loss = lewm(pixels, action, cfg.sigreg.lambd)
                 validation_loss += loss.item()
         
+        # save best after each epoch
+        torch.save({
+            'epoch': epoch,
+            'model_state_dict': lewm.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': validation_loss,
+        }, cfg.model_path)
 
         print(f"Total Training loss for epoch {epoch}: {training_loss / len(train)}")
         print(f"Total Validation loss for epoch {epoch}: {validation_loss / len(val)}")

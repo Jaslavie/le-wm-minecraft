@@ -2,7 +2,7 @@ defaults:
   - _self_
 
 config_name: ${hydra:job.name}
-
+model_path: model
 # == Shared ==
 action_dim: 10
 batch_size: 128

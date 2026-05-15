@@ -105,12 +105,13 @@ class LeWM(nn.Module):
         next_emb_pred = self.predictor(emb[:, :-1], action_emb[:, :-1])
         next_emb_target = emb[:, 1:] # actual next state
 
-        # get overall loss
-        pred_loss = F.mse_loss(next_emb_pred, next_emb_target)
+        return next_emb_pred, next_emb_target, emb
 
-        # step-wise sigreg (anti-collapse)
-        sigreg_loss = self.sigreg(emb)
+def compute_loss(next_emb_pred, next_emb_target, emb, sigreg, lambd):
+    # get overall loss
+    pred_loss = F.mse_loss(next_emb_pred, next_emb_target)
 
-        total_loss = pred_loss + lambd * sigreg_loss
-        
-        return total_loss
+    # step-wise sigreg (anti-collapse)
+    sigreg_loss = sigreg(emb)
+
+    return pred_loss + lambd * sigreg_loss
