@@ -12,6 +12,8 @@ ENV/
 build/
 dist/
 *.egg-info/
+Malmo
+run
 
 # training data
 mineRL_training.h5
