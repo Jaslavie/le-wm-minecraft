@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from utils import normalize_columns
 import hydra
 import wandb
@@ -137,9 +139,9 @@ def train_model(cfg: DictConfig):
         # validation
         with torch.no_grad():
             for i, data in enumerate(val):
-                action = data["action"]
-                pixels = data["pixels"]
-                model_out = lewm(pixels, action, cfg.sigreg.lambd)
+                action = data["action"].to(device)
+                pixels = data["pixels"].to(device)
+                model_out = lewm(pixels, action)
                 loss = compute_loss(
                     next_emb_pred=model_out[0], 
                     next_emb_target=model_out[1],
@@ -148,24 +150,37 @@ def train_model(cfg: DictConfig):
                     lambd=cfg.sigreg.lambd,
                 )
                 validation_loss += loss.item()
-        
-        # save best after each epoch
+
+        avg_train_loss = training_loss / len(train)
+        avg_val_loss = validation_loss / len(val)
+
+        # save latest model weights
         torch.save({
-            'epoch': epoch,
-            'model_state_dict': lewm.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'loss': validation_loss,
-        }, cfg.model_path)
+            "epoch": epoch,
+            "model_state_dict": lewm.state_dict(),
+            "train_loss": avg_train_loss,
+            "val_loss": avg_val_loss,
+        }, Path(cfg.model_path))
+
+        # collect checkpoints at the end of each epoch
+        torch.save({
+            "epoch": epoch,
+            "model_state_dict": lewm.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "scheduler_state_dict": scheduler.state_dict(),
+            "train_loss": avg_train_loss,
+            "val_loss": avg_val_loss,
+        }, Path(cfg.checkpoint_path / f"epoch_{epoch:03d}.pt"))
 
         # log epoch metrics to wandb
         wandb.log({
-            "train/epoch_loss": training_loss / len(train),
-            "val/epoch_loss": validation_loss / len(val),
+            "train/epoch_loss": avg_train_loss,
+            "val/epoch_loss": avg_val_loss,
             "lr": scheduler.get_last_lr()[0],
         })
 
-        print(f"Total Training loss for epoch {epoch}: {training_loss / len(train)}")
-        print(f"Total Validation loss for epoch {epoch}: {validation_loss / len(val)}")
+        print(f"Total Training loss for epoch {epoch}: {avg_train_loss}")
+        print(f"Total Validation loss for epoch {epoch}: {avg_val_loss}")
 
 if __name__=="__main__":
     train_model()
