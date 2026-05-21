@@ -96,6 +96,11 @@ def train_model(cfg: DictConfig):
     warmup = LinearLR(optimizer, start_factor=1e-3, total_iters=cfg.warmup_epochs)
     cosine = CosineAnnealingLR(optimizer, T_max=cfg.total_epochs - cfg.warmup_epochs, eta_min=1e-6)
     scheduler = SequentialLR(optimizer, [warmup, cosine], milestones=[cfg.warmup_epochs])
+
+    checkpoint_dir = Path(cfg.checkpoint_path)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    model_path = Path(cfg.model_path)
+    model_path.parent.mkdir(parents=True, exist_ok=True)
     
     # run training over epochs
     for epoch in range(cfg.total_epochs):
@@ -121,7 +126,7 @@ def train_model(cfg: DictConfig):
             # backward pass
             optimizer.zero_grad()
             loss.backward()
-            torch.nn.utils.clip_grad_norm(lewm.parameters(), max_norm=1.0)
+            torch.nn.utils.clip_grad_norm_(lewm.parameters(), max_norm=1.0)
             optimizer.step()
 
             training_loss += loss.item()
@@ -160,7 +165,7 @@ def train_model(cfg: DictConfig):
             "model_state_dict": lewm.state_dict(),
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss,
-        }, Path(cfg.model_path))
+        }, model_path)
 
         # collect checkpoints at the end of each epoch
         torch.save({
@@ -170,7 +175,7 @@ def train_model(cfg: DictConfig):
             "scheduler_state_dict": scheduler.state_dict(),
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss,
-        }, Path(cfg.checkpoint_path / f"epoch_{epoch:03d}.pt"))
+        }, checkpoint_dir / f"epoch_{epoch:03d}.pt")
 
         # log epoch metrics to wandb
         wandb.log({

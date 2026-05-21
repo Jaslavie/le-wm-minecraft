@@ -8,7 +8,7 @@ model_path: checkpoints/latest_model.pt
 action_dim: 10
 batch_size: 128
 total_epochs: 10
-warmup_epochs: 5
+warmup_epochs: 1
 sub_trajectory: 8 # 8 frames and 8 actions
 
 sigreg:
