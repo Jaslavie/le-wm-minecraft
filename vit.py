@@ -1,7 +1,7 @@
-########
-# Ti-ViT implementation from scratch
-# Expected input dimensions: [B, 3, 64, 64]
-########
+"""
+Ti-ViT (encoder) implementation from scratch
+Expected input dimensions: [B, 3, 64, 64]
+"""
 import torch
 import torch.nn as nn
 from torchvision import transforms
@@ -145,14 +145,14 @@ class tinyViT(nn.Module):
 
 def main(cfg: DictConfig):
     vit = tinyViT( 
-        image_size=cfg.image_size,
-        patch_size=cfg.patch_size,
-        embedding_dim=cfg.embedding_dim,
-        num_channels=cfg.num_channels,
-        num_patches=cfg.num_patches,
-        attention_heads=cfg.attention_heads,
-        mlp_hidden_nodes=cfg.mlp_hidden_nodes,
-        transformer_blocks=cfg.transformer_blocks
+        image_size=cfg.vit.image_size,
+        patch_size=cfg.vit.patch_size,
+        embedding_dim=cfg.vit.embedding_dim,
+        num_channels=cfg.vit.num_channels,
+        num_patches=cfg.vit.num_patches,
+        attention_heads=cfg.vit.attention_heads,
+        mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
+        transformer_blocks=cfg.vit.transformer_blocks
     )
     vit.eval()
 
