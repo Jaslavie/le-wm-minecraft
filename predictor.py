@@ -15,6 +15,10 @@ class Transformer(nn.Module):
     """
     def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes, dropout):
         super().__init__()
+
+        # create temporal mask over future observations (actions will be paired via adaln)
+        # the size of the matrix represents the sliding window of observations we attend to 
+        self.register_buffer('causal_mask', torch.triu(torch.ones(history_len, history_len), diagonal=1).bool())
         self.attention_heads = nn.MultiheadAttention(embedding_dim, attention_heads, batch_first=True)
 
         self.adaln1 = AdaLn(embedding_dim)

@@ -1,0 +1,236 @@
+from __future__ import print_function
+from builtins import range
+from _LeWM_integration_layer import get_LeWM_action, process_LeWM_action, prepare_video_data
+import MalmoPython
+import os
+import sys
+import time
+
+if sys.version_info[0] == 2:
+    sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)  # flush print output immediately
+else:
+    import functools
+    print = functools.partial(print, flush=True)
+
+missionXML0='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+            <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+              <About>
+                <Summary>Hello world!</Summary>
+              </About>
+
+              <ServerSection>
+                <ServerInitialConditions>
+                    <Time>
+                        <StartTime>1000</StartTime>
+                        <AllowPassageOfTime>false</AllowPassageOfTime>
+                    </Time>
+                    <Weather>clear</Weather>
+                </ServerInitialConditions>
+                <ServerHandlers>
+                  <!-- <DefaultWorldGenerator/> -->
+                  <FlatWorldGenerator generatorString="3;7,2*3,2;4;"/>
+                  <!-- <ServerQuitFromTimeUp timeLimitMs="30000"/> -->
+                  <ServerQuitWhenAnyAgentFinishes/>
+                </ServerHandlers>
+              </ServerSection>
+
+              <AgentSection mode="Survival">
+                <Name>MalmoTutorialBot</Name>
+                <AgentStart>
+                <!-- <Placement x="0" y="73" z="359"/> -->
+                <Placement x="0.5" y="4" z="0.5"/>
+                    <Inventory>
+                        <InventoryItem slot="0" type="diamond_axe"/>
+                    </Inventory>
+                </AgentStart>
+                <AgentHandlers>
+                  <ObservationFromFullStats/>
+                  <ContinuousMovementCommands turnSpeedDegs="180"/>
+                </AgentHandlers>
+              </AgentSection>
+            </Mission>'''
+
+import random
+
+
+def draw_tree(x, y, z, r):
+    gen = ""
+
+    # Base leaf config
+    leaf_br = r # Leaf base radius
+    leaf_base_y = y + 2
+    leaf_base_height = 2
+
+    # Upper leaf config
+    leaf_ur = 1 # Leaf upper radius
+    leaf_upper_y = leaf_base_y + leaf_base_height
+    leaf_upper_height = 2
+
+    # Generate leaves
+    gen += (f'<DrawCuboid x1="{x-leaf_br}" y1="{leaf_base_y}" z1="{z-leaf_br}" '
+                        f'x2="{x+leaf_br}" y2="{leaf_base_y + leaf_base_height-1}" z2="{z+leaf_br}" type="leaves"/>\n') # Base
+    gen += (f'<DrawCuboid x1="{x-leaf_ur}" y1="{leaf_upper_y}" z1="{z-leaf_ur}" '
+                        f'x2="{x+leaf_ur}" y2="{leaf_upper_y + leaf_upper_height-1}" z2="{z+leaf_ur}" type="leaves"/>\n') # Upper leaves
+    
+    # Trim base leaves
+    for i in range(leaf_base_y, leaf_base_y+leaf_base_height):
+        gen += f'<DrawBlock x="{x+leaf_br}" y="{i}" z="{z+leaf_br}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x+leaf_br}" y="{i}" z="{z-leaf_br}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x-leaf_br}" y="{i}" z="{z+leaf_br}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x-leaf_br}" y="{i}" z="{z-leaf_br}" type="air"/>\n'
+
+    # Trim upper leaves
+    for i in range(leaf_upper_y+1, leaf_upper_y+leaf_upper_height):
+        gen += f'<DrawBlock x="{x+leaf_ur}" y="{i}" z="{z+leaf_ur}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x+leaf_ur}" y="{i}" z="{z-leaf_ur}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x-leaf_ur}" y="{i}" z="{z+leaf_ur}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x-leaf_ur}" y="{i}" z="{z-leaf_ur}" type="air"/>\n'
+
+    # Generate trunk
+    for dy in range(y, leaf_upper_y + leaf_upper_height // 2):
+        gen += f'<DrawBlock x="{x}" y="{dy}" z="{z}" type="log"/>\n'
+
+    return gen
+
+
+def draw_random_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4):
+    gen = ""
+
+    # Clear original trees (SUPERFLAT ONLY)
+    gen += (f'<DrawCuboid x1="{xmin-10}" y1="{ground_y}" z1="{zmin-10}" '
+                        f'x2="{xmax+10}" y2="{ground_y + 30}" z2="{zmax+10}" type="air"/>\n')
+    gen += (f'<DrawCuboid x1="{xmin-10}" y1="{ground_y-1}" z1="{zmin-10}" '
+                        f'x2="{xmax+10}" y2="{ground_y-1}" z2="{zmax+10}" type="grass"/>\n')
+
+    for _ in range(num_trees):
+        x = random.randint(xmin, xmax)
+        z = random.randint(zmin, zmax)
+        gen += draw_tree(x, ground_y, z, 2)
+    return gen
+
+
+tree_xml = draw_random_trees(25, -50, 50, -50, 50)
+
+missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <About>
+    <Summary>Superflat world with random trees</Summary>
+  </About>
+
+  <ServerSection>
+    <ServerInitialConditions>
+      <Time>
+        <StartTime>1000</StartTime>
+        <AllowPassageOfTime>false</AllowPassageOfTime>
+      </Time>
+      <Weather>clear</Weather>
+    </ServerInitialConditions>
+
+    <ServerHandlers>
+      <!-- Superflat world: bedrock, dirt, grass -->
+      <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/>
+      <DrawingDecorator>
+        {tree_xml}
+      </DrawingDecorator>
+      <ServerQuitFromTimeUp timeLimitMs="60000"/>
+      <ServerQuitWhenAnyAgentFinishes/>
+    </ServerHandlers>
+  </ServerSection>
+
+  <AgentSection mode="Creative">
+    <Name>TreeBot</Name>
+    <AgentStart>
+      <Placement x="0.5" y="5" z="0.5" yaw="0"/>
+    </AgentStart>
+    <AgentHandlers>
+      <VideoProducer want_depth="false">
+            <Width>''' + str(952) + '''</Width>
+            <Height>''' + str(540) + '''</Height>
+        </VideoProducer>
+      <ObservationFromFullStats/>
+      <ContinuousMovementCommands turnSpeedDegs="180"/>
+    </AgentHandlers>
+  </AgentSection>
+
+</Mission>
+'''
+
+# Create default Malmo objects:
+
+agent_host = MalmoPython.AgentHost()
+try:
+    agent_host.parse( sys.argv )
+except RuntimeError as e:
+    print('ERROR:',e)
+    print(agent_host.getUsage())
+    exit(1)
+if agent_host.receivedArgument("help"):
+    print(agent_host.getUsage())
+    exit(0)
+
+my_mission = MalmoPython.MissionSpec(missionXML, True)
+my_mission_record = MalmoPython.MissionRecordSpec()
+
+# Attempt to start a mission:
+max_retries = 3
+for retry in range(max_retries):
+    try:
+        agent_host.startMission( my_mission, my_mission_record )
+        break
+    except RuntimeError as e:
+        if retry == max_retries - 1:
+            print("Error starting mission:",e)
+            exit(1)
+        else:
+            time.sleep(2)
+
+# Loop until mission starts:
+print("Waiting for the mission to start ", end=' ')
+world_state = agent_host.getWorldState()
+while not world_state.has_mission_begun:
+    print(".", end="")
+    time.sleep(0.1)
+    world_state = agent_host.getWorldState()
+    for error in world_state.errors:
+        print("Error:",error.text)
+
+print()
+print("Mission running ")
+
+setting = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+done = False
+
+# Loop until mission ends:
+while world_state.is_mission_running:
+    world_state = agent_host.getWorldState()
+    for error in world_state.errors:
+        print("Error:",error.text)
+
+    if not done and world_state.number_of_video_frames_since_last_state > 0:
+        frame_data = []
+
+        for frame in world_state.video_frames:
+            frame_data.append(prepare_video_data(frame))
+
+        for frame in frame_data:
+            action_list = get_LeWM_action(frame)
+
+    # TODO: Don't send any action input for now
+    action_list = [0] * 10#get_LeWM_action() #input("Enter next action command: ")
+
+    action_list = process_LeWM_action(action_list, setting)
+
+    if not done:
+        print(action_list)
+        done = True
+
+    for action in action_list:
+        agent_host.sendCommand(action)
+
+    time.sleep(0.1)
+
+print()
+print("Mission ended")
+# Mission has ended.

@@ -1,5 +1,5 @@
 /data
-venv
+venv/
 __pycache__/
 *.py[cod]
 *.pyo
@@ -13,6 +13,9 @@ ENV/
 build/
 dist/
 *.egg-info/
+Malmo
+run
+.idea
 
 # training data
 mineRL_training.h5

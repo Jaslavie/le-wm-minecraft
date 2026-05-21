@@ -68,4 +68,4 @@ timestamp 0 = [1, 1, 0, 0, 0, 0, 0, 0]
 ### Additional Reading
 
 - [Neural Architectures for Vision > Transformers (MIT)](https://visionbook.mit.edu/transformers.html)
-
+- [CLS Token in Vision Transformers](https://www.abhik.ai/concepts/attention/cls-token)
