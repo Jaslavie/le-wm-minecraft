@@ -1,12 +1,14 @@
-import stable_worldmodel as swm
 from utils import normalize_columns
 import hydra
-from lewm import LeWM, compute_loss, SIGReg
+import wandb
 import torch
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader, Subset
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
+
+from lewm import LeWM, compute_loss, SIGReg
+import stable_worldmodel as swm
 
 @hydra.main(version_base=None, config_path="./config", config_name="lewm")
 def train_model(cfg: DictConfig):
@@ -14,6 +16,13 @@ def train_model(cfg: DictConfig):
     The primary training parameters are random projections M and 
     the regularization weight λ (how much to prioritize stability)
     """
+    # set up wandb training run for each training session
+    run = wandb.init(
+        entity="jaslavie-uci",
+        project="lewm",
+        config=OmegaConf.to_container(cfg, resolve=True)
+    )
+
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
     print(f"using device {device}")
 
@@ -115,6 +124,9 @@ def train_model(cfg: DictConfig):
 
             training_loss += loss.item()
 
+            # log training metrics
+            wandb.log({"train/loss": loss.item(), "epoch": epoch, "step": i})
+
             # print loss every 100 batches
             if i % 100 == 0:
                 print(f"Training loss for {i} / {len(train)}: {loss.item()}")
@@ -145,10 +157,15 @@ def train_model(cfg: DictConfig):
             'loss': validation_loss,
         }, cfg.model_path)
 
+        # log epoch metrics to wandb
+        wandb.log({
+            "train/epoch_loss": training_loss / len(train),
+            "val/epoch_loss": validation_loss / len(val),
+            "lr": scheduler.get_last_lr()[0],
+        })
+
         print(f"Total Training loss for epoch {epoch}: {training_loss / len(train)}")
         print(f"Total Validation loss for epoch {epoch}: {validation_loss / len(val)}")
-
-
 
 if __name__=="__main__":
     train_model()

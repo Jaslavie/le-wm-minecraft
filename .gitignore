@@ -6,7 +6,8 @@ __pycache__/
 *.pyd
 .Python
 .venv/
-env/
+*.env/
+.env
 ENV/
 .ipynb_checkpoints/
 build/
@@ -17,3 +18,4 @@ dist/
 mineRL_training.h5
 
 outputs
+wandb
