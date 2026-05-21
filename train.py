@@ -4,8 +4,8 @@ import hydra
 from lewm import LeWM, compute_loss, SIGReg
 import torch
 from torch.optim import AdamW
-from torch.utils.data import DataLoader
-from torch.utils.data import Subset
+from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.utils.data import DataLoader, Subset
 from omegaconf import DictConfig
 
 @hydra.main(version_base=None, config_path="./config", config_name="lewm")
@@ -15,8 +15,9 @@ def train_model(cfg: DictConfig):
     the regularization weight λ (how much to prioritize stability)
     """
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
+    print(f"using device {device}")
 
-    # Load and normalize original dataset
+    # load and normalize original dataset
     ds = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
 
     normalizer = normalize_columns(
@@ -78,10 +79,15 @@ def train_model(cfg: DictConfig):
         factor=cfg.sigreg.factor,
         phi=cfg.sigreg.phi
     ).to(device)
+
+    # optimization with warmup and cosine annealing 
     optimizer = AdamW(lewm.parameters(), lr=cfg.optimizer.lr, weight_decay=cfg.optimizer.weight_decay)
+    warmup = LinearLR(optimizer, start_factor=1e-3, total_iters=cfg.warmup_epochs)
+    cosine = CosineAnnealingLR(optimizer, T_max=cfg.total_epochs - cfg.warmup_epochs, eta_min=1e-6)
+    scheduler = SequentialLR(optimizer, [warmup, cosine], milestones=[cfg.warmup_epochs])
     
     # run training over epochs
-    for epoch in range(cfg.epochs):
+    for epoch in range(cfg.total_epochs):
         training_loss = 0
         validation_loss = 0
 
@@ -104,6 +110,7 @@ def train_model(cfg: DictConfig):
             # backward pass
             optimizer.zero_grad()
             loss.backward()
+            torch.nn.utils.clip_grad_norm(lewm.parameters(), max_norm=1.0)
             optimizer.step()
 
             training_loss += loss.item()
@@ -112,12 +119,22 @@ def train_model(cfg: DictConfig):
             if i % 100 == 0:
                 print(f"Training loss for {i} / {len(train)}: {loss.item()}")
 
+        # increment scheduler per epoch
+        scheduler.step()
+
         # validation
         with torch.no_grad():
             for i, data in enumerate(val):
                 action = data["action"]
                 pixels = data["pixels"]
-                loss = lewm(pixels, action, cfg.sigreg.lambd)
+                model_out = lewm(pixels, action, cfg.sigreg.lambd)
+                loss = compute_loss(
+                    next_emb_pred=model_out[0], 
+                    next_emb_target=model_out[1],
+                    emb= model_out[2],
+                    sigreg= sigreg,
+                    lambd=cfg.sigreg.lambd,
+                )
                 validation_loss += loss.item()
         
         # save best after each epoch

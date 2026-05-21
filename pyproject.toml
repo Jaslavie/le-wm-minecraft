@@ -8,12 +8,19 @@ version = "0.1.0"
 requires-python = ">=3.10"
 dependencies = [
     "numpy",
-    "cv2",
+    "opencv-python",
     "matplotlib",
     "stable-worldmodel",
-    "hydra",
+    "hydra-core",
     "pytest",
+    "torch",
+    "torchvision",
+    "h5py",
+    "pillow",
 ]
+
+[tool.setuptools]
+py-modules = ["lewm", "vit", "modules", "predictor", "utils"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

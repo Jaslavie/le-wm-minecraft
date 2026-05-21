@@ -92,7 +92,7 @@ class LeWM(nn.Module):
         )
         self.sigreg = SIGReg(num_proj, factor, phi)
     
-    def forward(self, pixels, actions, lambd):
+    def forward(self, pixels, actions):
         B, T, C, H, W = pixels.shape # B, T, C, H, W
 
         # combine batch and time into one dimension for conv2d
