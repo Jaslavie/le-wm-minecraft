@@ -20,9 +20,8 @@ def train_model(cfg: DictConfig):
     """
     # set up wandb training run for each training session
     run = wandb.init(
-        entity="jaslavie-uci",
-        project="lewm",
-        config=OmegaConf.to_container(cfg, resolve=True)
+        project=cfg.wandb.project,
+        config=OmegaConf.to_container(cfg, resolve=True),
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
@@ -86,6 +85,7 @@ def train_model(cfg: DictConfig):
         transformer_blocks=cfg.vit.transformer_blocks,
         action_dim=cfg.action_dim,
         dropout=cfg.predictor.dropout,
+        history_len=cfg.predictor.history_len,
         num_proj=cfg.sigreg.num_proj,
         factor=cfg.sigreg.factor,
         phi=cfg.sigreg.phi
@@ -105,7 +105,11 @@ def train_model(cfg: DictConfig):
     # run training over epochs
     for epoch in range(cfg.total_epochs):
         training_loss = 0
+        training_pred_loss = 0
+        training_sigreg_loss = 0
         validation_loss = 0
+        validation_pred_loss = 0
+        validation_sigreg_loss = 0
 
         # training
         for i, data in enumerate(train):
@@ -115,7 +119,7 @@ def train_model(cfg: DictConfig):
 
             # forward pass
             model_out = lewm(pixels, action)
-            loss = compute_loss(
+            loss, pred_loss, sigreg_loss = compute_loss(
                 next_emb_pred=model_out[0], 
                 next_emb_target=model_out[1],
                 emb= model_out[2],
@@ -130,9 +134,18 @@ def train_model(cfg: DictConfig):
             optimizer.step()
 
             training_loss += loss.item()
+            training_pred_loss += pred_loss.item()
+            training_sigreg_loss += sigreg_loss.item()
 
             # log training metrics
-            wandb.log({"train/loss": loss.item(), "epoch": epoch, "step": i})
+            wandb.log({
+                "train/loss": loss.item(),
+                "train/pred_loss": pred_loss.item(),
+                "train/sigreg_loss": sigreg_loss.item(),
+                "train/weighted_sigreg_loss": cfg.sigreg.lambd * sigreg_loss.item(),
+                "epoch": epoch,
+                "step": i,
+            })
 
             # print loss every 100 batches
             if i % 100 == 0:
@@ -147,7 +160,7 @@ def train_model(cfg: DictConfig):
                 action = data["action"].to(device)
                 pixels = data["pixels"].to(device)
                 model_out = lewm(pixels, action)
-                loss = compute_loss(
+                loss, pred_loss, sigreg_loss = compute_loss(
                     next_emb_pred=model_out[0], 
                     next_emb_target=model_out[1],
                     emb= model_out[2],
@@ -155,9 +168,15 @@ def train_model(cfg: DictConfig):
                     lambd=cfg.sigreg.lambd,
                 )
                 validation_loss += loss.item()
+                validation_pred_loss += pred_loss.item()
+                validation_sigreg_loss += sigreg_loss.item()
 
         avg_train_loss = training_loss / len(train)
         avg_val_loss = validation_loss / len(val)
+        avg_train_pred_loss = training_pred_loss / len(train)
+        avg_train_sigreg_loss = training_sigreg_loss / len(train)
+        avg_val_pred_loss = validation_pred_loss / len(val)
+        avg_val_sigreg_loss = validation_sigreg_loss / len(val)
 
         # save latest model weights
         torch.save({
@@ -180,12 +199,18 @@ def train_model(cfg: DictConfig):
         # log epoch metrics to wandb
         wandb.log({
             "train/epoch_loss": avg_train_loss,
+            "train/epoch_pred_loss": avg_train_pred_loss,
+            "train/epoch_sigreg_loss": avg_train_sigreg_loss,
+            "train/epoch_weighted_sigreg_loss": cfg.sigreg.lambd * avg_train_sigreg_loss,
             "val/epoch_loss": avg_val_loss,
+            "val/epoch_pred_loss": avg_val_pred_loss,
+            "val/epoch_sigreg_loss": avg_val_sigreg_loss,
+            "val/epoch_weighted_sigreg_loss": cfg.sigreg.lambd * avg_val_sigreg_loss,
             "lr": scheduler.get_last_lr()[0],
         })
 
-        print(f"Total Training loss for epoch {epoch}: {avg_train_loss}")
-        print(f"Total Validation loss for epoch {epoch}: {avg_val_loss}")
+        print(f"Total Training loss for epoch {epoch}: {avg_train_loss} (pred={avg_train_pred_loss:.6f}, sigreg={avg_train_sigreg_loss:.6f})")
+        print(f"Total Validation loss for epoch {epoch}: {avg_val_loss} (pred={avg_val_pred_loss:.6f}, sigreg={avg_val_sigreg_loss:.6f})")
 
 if __name__=="__main__":
     train_model()

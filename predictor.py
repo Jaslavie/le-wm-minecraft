@@ -13,7 +13,7 @@ class Transformer(nn.Module):
         Input: observation embedding z_t, action a_t, 
         Output: predicted observation embedding z_t+1
     """
-    def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes, dropout):
+    def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes, dropout, history_len):
         super().__init__()
 
         # create temporal mask over future observations (actions will be paired via adaln)
@@ -88,7 +88,7 @@ class Predictor(nn.Module):
         Input: observation embedding z_t, action vector at timestamp t
         Output: predicted observation embedding z_t+1
     """
-    def __init__(self, embedding_dim, attention_heads, mlp_hidden_nodes, dropout, transformer_blocks):
+    def __init__(self, embedding_dim, attention_heads, mlp_hidden_nodes, dropout, transformer_blocks, history_len):
         super().__init__()
         # 6 transformer layers
         self.transformer_blocks = nn.Sequential(
@@ -97,6 +97,7 @@ class Predictor(nn.Module):
                 embedding_dim=embedding_dim,
                 mlp_hidden_nodes=mlp_hidden_nodes,
                 dropout=dropout,
+                history_len=history_len,
             )
                 for _ in range(transformer_blocks)]
         )

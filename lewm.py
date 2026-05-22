@@ -62,6 +62,7 @@ class LeWM(nn.Module):
         transformer_blocks, 
         action_dim, 
         dropout, 
+        history_len,
         num_proj, 
         factor, 
         phi,
@@ -84,6 +85,7 @@ class LeWM(nn.Module):
             mlp_hidden_nodes=mlp_hidden_nodes,
             dropout=dropout,
             transformer_blocks=transformer_blocks,
+            history_len=history_len,
         )
         # 192 dim embedding of actions
         self.action_embedder = ActionEmbedder(
@@ -114,4 +116,4 @@ def compute_loss(next_emb_pred, next_emb_target, emb, sigreg, lambd):
     # step-wise sigreg (anti-collapse)
     sigreg_loss = sigreg(emb)
 
-    return pred_loss + lambd * sigreg_loss
+    return pred_loss + lambd * sigreg_loss, pred_loss, sigreg_loss
