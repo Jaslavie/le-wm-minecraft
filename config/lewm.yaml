@@ -20,7 +20,7 @@ sigreg:
   num_proj: 1024
   factor: 1.0
   phi: 0.606 # frequency of normal dist. for epps pulley test
-  lambd: 0.01
+  lambd: 0.1
 
 # == ViT encoder hyperparameters ==
 vit:
