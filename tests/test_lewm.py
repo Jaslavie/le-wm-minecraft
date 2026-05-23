@@ -88,7 +88,10 @@ def test_predictor_output(predictor, vit):
 
         # get corresponding actions for observations
         actions = f['action'][0:8]
-        print(f"Actions at timestamps 1-8: {'\n'.join([f'at {x}: {actions[x]}' for x in range(1, 8)])}")
+        print(
+            "Actions at timestamps 1-8:\n"
+            + '\n'.join(f'at {x}: {actions[x]}' for x in range(1, 8))
+        )
 
     with torch.no_grad():
         z = vit(pixels_t) # [8, 192]
