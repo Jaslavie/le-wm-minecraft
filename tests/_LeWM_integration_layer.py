@@ -1,9 +1,17 @@
-import numpy as np
+# from vit import tinyViT
 
-def get_LeWM_action():
+def get_LeWM_action(action_count, n):
+
+    if action_count < n:
+        action = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    else:
+        action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+    action_count += 1
+
     # Stub
     #[ forward, left, back, right, jump, sneak, sprint, attack , camera, camera]
-    return [0, 0, 0, 0, 0, 0, 0, 1, 0, 1]
+    return action, action_count
 
 def process_LeWM_action(action_list, current):
     # Convert array into instructions
@@ -51,5 +59,6 @@ def prepare_video_data(frame_data):
     # frame.reshape((height, width, 3))
 
     # TODO: Any pre-processing for raw video pixels goes here
+    # TODO: Run frames through encoder
 
     return img
