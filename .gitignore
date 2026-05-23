@@ -22,4 +22,5 @@ mineRL_training.h5
 
 outputs
 wandb
+logs/
 checkpoints/

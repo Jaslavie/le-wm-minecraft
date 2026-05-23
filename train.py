@@ -9,7 +9,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader, Subset
 from omegaconf import DictConfig, OmegaConf
 
-from lewm import LeWM, compute_loss, SIGReg
+from lewm import LeWM, compute_loss
 import stable_worldmodel as swm
 
 @hydra.main(version_base=None, config_path="./config", config_name="lewm")
@@ -22,6 +22,7 @@ def train_model(cfg: DictConfig):
     run = wandb.init(
         project=cfg.wandb.project,
         config=OmegaConf.to_container(cfg, resolve=True),
+        dir="logs/wandb_runs",
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "mps")
@@ -66,13 +67,6 @@ def train_model(cfg: DictConfig):
 
     print(f"training size: {train_size}, validation size: {num_episodes - train_size}")
 
-    # init loss
-    sigreg = SIGReg(
-        num_proj=cfg.sigreg.num_proj,
-        factor=cfg.sigreg.factor,
-        phi=cfg.sigreg.phi
-    )
-    
     # init world  model
     lewm = LeWM(
         image_size=cfg.vit.image_size,
@@ -80,9 +74,12 @@ def train_model(cfg: DictConfig):
         embedding_dim=cfg.vit.embedding_dim,
         num_channels=cfg.vit.num_channels,
         num_patches=cfg.vit.num_patches,
-        attention_heads=cfg.vit.attention_heads,
-        mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
-        transformer_blocks=cfg.vit.transformer_blocks,
+        vit_attention_heads=cfg.vit.attention_heads,
+        vit_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
+        vit_transformer_blocks=cfg.vit.transformer_blocks,
+        predictor_attention_heads=cfg.predictor.attention_heads,
+        predictor_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
+        predictor_transformer_blocks=cfg.predictor.transformer_blocks,
         action_dim=cfg.action_dim,
         dropout=cfg.predictor.dropout,
         history_len=cfg.predictor.history_len,
@@ -101,7 +98,9 @@ def train_model(cfg: DictConfig):
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
     model_path = Path(cfg.model_path)
     model_path.parent.mkdir(parents=True, exist_ok=True)
-    
+    best_model_path = checkpoint_dir / "best_model.pt"
+    best_val_loss = float("inf")
+
     # run training over epochs
     for epoch in range(cfg.total_epochs):
         training_loss = 0
@@ -123,7 +122,7 @@ def train_model(cfg: DictConfig):
                 next_emb_pred=model_out[0], 
                 next_emb_target=model_out[1],
                 emb= model_out[2],
-                sigreg= sigreg,
+                sigreg=lewm.sigreg,
                 lambd=cfg.sigreg.lambd,
             )
 
@@ -164,7 +163,7 @@ def train_model(cfg: DictConfig):
                     next_emb_pred=model_out[0], 
                     next_emb_target=model_out[1],
                     emb= model_out[2],
-                    sigreg= sigreg,
+                    sigreg=lewm.sigreg,
                     lambd=cfg.sigreg.lambd,
                 )
                 validation_loss += loss.item()
@@ -178,13 +177,20 @@ def train_model(cfg: DictConfig):
         avg_val_pred_loss = validation_pred_loss / len(val)
         avg_val_sigreg_loss = validation_sigreg_loss / len(val)
 
-        # save latest model weights
-        torch.save({
+        checkpoint_payload = {
             "epoch": epoch,
             "model_state_dict": lewm.state_dict(),
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss,
-        }, model_path)
+        }
+
+        # save latest model weights
+        torch.save(checkpoint_payload, model_path)
+
+        # save best model
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            torch.save(checkpoint_payload, best_model_path)
 
         # collect checkpoints at the end of each epoch
         torch.save({
