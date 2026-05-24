@@ -15,8 +15,9 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 python -m pip install -e .
 ```
 
-1. Run the data_processing.ipynb file in full. This loads the processed data into the data folder. This is necessary for training.
-2. Run tests
+1. Download dataset into your local repo
+2. Run the data_processing.ipynb file in full. This loads the processed data into the data folder. This is necesary for training
+3. Running tests
 
 ```
 python -m pytest

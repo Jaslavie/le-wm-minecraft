@@ -5,6 +5,18 @@ import MalmoPython
 import os
 import sys
 import time
+import signal
+import pickle
+
+frame_data = []
+
+def signal_handler(sig, frame):
+    with open("./video_frames.pkl", 'wb') as file:
+        pickle.dump(frame_data, file)
+
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
 
 if sys.version_info[0] == 2:
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)  # flush print output immediately
@@ -51,6 +63,11 @@ missionXML0='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
               </AgentSection>
             </Mission>'''
 
+#  <!--  <maxFPS>''' + str(30) + '''</maxFPS> -->
+    #   <Inventory>
+    #     <InventoryItem slot="0" type="diamond_axe"/>
+    #   </Inventory>
+
 import random
 
 
@@ -94,23 +111,43 @@ def draw_tree(x, y, z, r):
     return gen
 
 
-def draw_random_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4):
+def draw_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4, random=True, border = False):
     gen = ""
+    tree_radius=2
 
     # Clear original trees (SUPERFLAT ONLY)
     gen += (f'<DrawCuboid x1="{xmin-10}" y1="{ground_y}" z1="{zmin-10}" '
                         f'x2="{xmax+10}" y2="{ground_y + 30}" z2="{zmax+10}" type="air"/>\n')
     gen += (f'<DrawCuboid x1="{xmin-10}" y1="{ground_y-1}" z1="{zmin-10}" '
                         f'x2="{xmax+10}" y2="{ground_y-1}" z2="{zmax+10}" type="grass"/>\n')
+    
+    # If configured, add border to restrict environment
+    if border:
+        gen += (f'<DrawCuboid x1="{xmin-tree_radius-1}" y1="{ground_y}" z1="{zmin-tree_radius-1}" '
+                        f'x2="{xmax+tree_radius+1}" y2="{ground_y+4}" z2="{zmax+tree_radius+1}" type="barrier"/>\n')
+        gen += (f'<DrawCuboid x1="{xmin-tree_radius}" y1="{ground_y}" z1="{zmin-tree_radius}" '
+                        f'x2="{xmax+tree_radius}" y2="{ground_y+4}" z2="{zmax+tree_radius}" type="air"/>\n')
 
-    for _ in range(num_trees):
-        x = random.randint(xmin, xmax)
-        z = random.randint(zmin, zmax)
-        gen += draw_tree(x, ground_y, z, 2)
+    if random:
+        for _ in range(num_trees):
+            x = random.randint(xmin, xmax)
+            z = random.randint(zmin, zmax)
+            gen += draw_tree(x, ground_y, z, tree_radius)
+    else:
+        # x = xmin + tree_radius + 1
+        # z = zmin + tree_radius + 1
+        trees_placed = 0
+
+        for x in range(xmax-1, xmin, -1 * (2 * tree_radius + 1 + 1)):
+            for z in range(zmax-1, zmin, -1 * (2 * tree_radius + 1 + 1)):
+                if trees_placed < num_trees:
+                    gen += draw_tree(x, ground_y, z, tree_radius)
+                    trees_placed += 1
+
     return gen
 
 
-tree_xml = draw_random_trees(25, -50, 50, -50, 50)
+tree_xml = draw_trees(1, -5, 5, -5, 5, random=False, border=True) #draw_trees(25, -50, 50, -50, 50) # <- Random tree generation
 
 missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
@@ -129,7 +166,6 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
     </ServerInitialConditions>
 
     <ServerHandlers>
-      <!-- Superflat world: bedrock, dirt, grass -->
       <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/>
       <DrawingDecorator>
         {tree_xml}
@@ -139,7 +175,7 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
     </ServerHandlers>
   </ServerSection>
 
-  <AgentSection mode="Creative">
+  <AgentSection mode="Survival">
     <Name>TreeBot</Name>
     <AgentStart>
       <Placement x="0.5" y="5" z="0.5" yaw="0"/>
@@ -201,24 +237,26 @@ print("Mission running ")
 
 setting = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 done = False
+action_count = 0
 
 # Loop until mission ends:
-while world_state.is_mission_running:
+while world_state.is_mission_running and action_count < 19:
     world_state = agent_host.getWorldState()
+    action_list = [0] * 10
+
     for error in world_state.errors:
         print("Error:",error.text)
 
-    if not done and world_state.number_of_video_frames_since_last_state > 0:
-        frame_data = []
+    if world_state.number_of_video_frames_since_last_state > 0:
+        if setting != [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]: # For video generation, only save frames when the player is active
+            for frame in world_state.video_frames:
+                frame_data.append(prepare_video_data(frame))
 
-        for frame in world_state.video_frames:
-            frame_data.append(prepare_video_data(frame))
-
-        for frame in frame_data:
-            action_list = get_LeWM_action(frame)
+        # for frame in frame_data:
+        #     action_list = get_LeWM_action(frame) # TODO: Pass frame into working model
 
     # TODO: Don't send any action input for now
-    action_list = [0] * 10#get_LeWM_action() #input("Enter next action command: ")
+    action_list, action_count = get_LeWM_action(action_count, 19) # [input("Enter next action command: ")] # [0] * 10
 
     action_list = process_LeWM_action(action_list, setting)
 
@@ -231,6 +269,9 @@ while world_state.is_mission_running:
 
     time.sleep(0.1)
 
+with open("./video_frames.pkl", 'wb') as file:
+    print(type(frame_data))
+    pickle.dump(frame_data, file)
 print()
 print("Mission ended")
 # Mission has ended.
