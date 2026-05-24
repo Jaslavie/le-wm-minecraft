@@ -122,7 +122,7 @@ class LeWM(nn.Module):
         self.sigreg = SIGReg(num_proj, factor, phi)
     
     def forward(self, pixels, actions):
-        B, T, C, H, W = pixels.shape # B, T, C, H, W
+        B, T, C, H, W = pixels.shape
 
         # combine batch and time into one dimension for conv2d
         # reshape back to og dimension after converting to embedding
