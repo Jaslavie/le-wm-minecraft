@@ -2,12 +2,12 @@ defaults:
   - _self_
 
 config_name: ${hydra:job.name}
-checkpoint_path: checkpoints             # per-epoch training state: checkpoints/epoch_000.pt, ...
+checkpoint_path: checkpoints # per-epoch training state: checkpoints/epoch_000.pt, ...
 model_path: checkpoints/latest_model.pt
 
 wandb:
   project: lewm
-  entity: null  # defaults to wandb account
+  entity: null # defaults to wandb account
 
 # == Shared ==
 action_dim: 10
@@ -49,4 +49,5 @@ optimizer:
 planner:
   max_iter: 10
   n_samples: 300
-  n_samples, n_elites, planning_horizon
+  n_elites: 30
+  planning_horizon: 8

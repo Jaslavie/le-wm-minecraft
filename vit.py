@@ -53,6 +53,8 @@ class Transformer(nn.Module):
         Reduces connections needed across the network (more efficient)
         Highlights most salient features instead of localizing (a limitation of CNN)
         Understands global features of image (via self attention mechanism)
+
+    Output: CLS token for a single frame (1, 64, 1024)
     """
     def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes):
         super().__init__()
@@ -81,7 +83,7 @@ class Transformer(nn.Module):
         input = self.mlp(input)
         input = input + residual2
 
-        # return processed token with same dimensions ([1, 64, 1024])
+        # return processed cls token with same dimensions ([1, 64, 1024])
         return input 
 
 class tinyViT(nn.Module):

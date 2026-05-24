@@ -16,10 +16,13 @@ dist/
 Malmo
 run
 .idea
+text/*
+wandb
 
 # training data
 mineRL_training.h5
 
 outputs
 wandb
+logs/
 checkpoints/
