@@ -6,6 +6,8 @@ __pycache__/
 *.pyd
 .Python
 .venv/
+.venv-3.7/
+.pytest_cache
 env/
 ENV/
 .ipynb_checkpoints/
@@ -15,10 +17,11 @@ dist/
 Malmo
 run
 .idea
-text/*
+text
 wandb
 
 # training data
 mineRL_training.h5
+checkpoints
 
 outputs
