@@ -8,11 +8,12 @@ import torch.nn.functional as F
 from utils import normalize_camera
 
 class Planner:
-    def __init__(self, max_iter, n_samples, n_elites, planning_horizon):
+    def __init__(self, max_iter, n_samples, n_elites, planning_horizon, action_dim):
         self.max_iter = max_iter
         self.n_samples = n_samples
         self.n_elites = n_elites
         self.horizon = planning_horizon
+        self.action_dim = action_dim
     
     def objective_function(self, z_H, z_g):
         """
@@ -22,7 +23,7 @@ class Planner:
         """
         return F.mse_loss(z_H, z_g)
 
-    def planner(self, lewm, obs, obs_goal, action_dim, cam_mean, cam_std):
+    def planner(self, lewm, obs, obs_goal, cam_mean, cam_std):
         """
         Samples and selects the best action sequence to take given a single
         current observation and goal observation.
@@ -34,8 +35,8 @@ class Planner:
         Outputs: (H, A) best action sequence found after max_iter
         """
         # initialize mu and sigma for sampling distribution
-        mu = np.zeros((self.horizon, action_dim))
-        sigma = np.ones((self.horizon, action_dim))
+        mu = np.zeros((self.horizon, self.action_dim))
+        sigma = np.ones((self.horizon, self.action_dim))
 
         # send to gpu if available
         device = torch.device(
@@ -57,7 +58,7 @@ class Planner:
         for _ in range(self.max_iter):
             # 1. Action sampling: sample 300 candidate action samples (n_samples)
             #   each sample contains action sequences up to time horizon (H)
-            samples = np.zeros((self.n_samples, self.horizon, action_dim))
+            samples = np.zeros((self.n_samples, self.horizon, self.action_dim))
             samples[..., :8] = np.random.normal(mu[:, :8], sigma[:, :8], size=(self.n_samples, self.horizon, 8)) # binary actions
             samples[..., :8] = (samples[..., :8] > 0.5).astype(np.float32) # binarize
             samples[..., 8:] = np.random.normal(mu[:, 8:], sigma[:, 8:], size=(self.n_samples, self.horizon, 2)) # camera
