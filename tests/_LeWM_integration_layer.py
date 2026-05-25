@@ -1,6 +1,8 @@
 # from vit import tinyViT
 
 def get_LeWM_action(action_count, n):
+    # This function is currently a stub
+    #[ forward, left, back, right, jump, sneak, sprint, attack , camera, camera]
 
     if action_count < n:
         action = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
@@ -9,8 +11,6 @@ def get_LeWM_action(action_count, n):
 
     action_count += 1
 
-    # Stub
-    #[ forward, left, back, right, jump, sneak, sprint, attack , camera, camera]
     return action, action_count
 
 def process_LeWM_action(action_list, current):

@@ -24,49 +24,19 @@ else:
     import functools
     print = functools.partial(print, flush=True)
 
-missionXML0='''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
-            <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
-
-              <About>
-                <Summary>Hello world!</Summary>
-              </About>
-
-              <ServerSection>
-                <ServerInitialConditions>
-                    <Time>
-                        <StartTime>1000</StartTime>
-                        <AllowPassageOfTime>false</AllowPassageOfTime>
-                    </Time>
-                    <Weather>clear</Weather>
-                </ServerInitialConditions>
-                <ServerHandlers>
-                  <!-- <DefaultWorldGenerator/> -->
-                  <FlatWorldGenerator generatorString="3;7,2*3,2;4;"/>
-                  <!-- <ServerQuitFromTimeUp timeLimitMs="30000"/> -->
-                  <ServerQuitWhenAnyAgentFinishes/>
-                </ServerHandlers>
-              </ServerSection>
-
-              <AgentSection mode="Survival">
-                <Name>MalmoTutorialBot</Name>
-                <AgentStart>
-                <!-- <Placement x="0" y="73" z="359"/> -->
-                <Placement x="0.5" y="4" z="0.5"/>
-                    <Inventory>
-                        <InventoryItem slot="0" type="diamond_axe"/>
-                    </Inventory>
-                </AgentStart>
-                <AgentHandlers>
-                  <ObservationFromFullStats/>
-                  <ContinuousMovementCommands turnSpeedDegs="180"/>
-                </AgentHandlers>
-              </AgentSection>
-            </Mission>'''
-
-#  <!--  <maxFPS>''' + str(30) + '''</maxFPS> -->
     #   <Inventory>
     #     <InventoryItem slot="0" type="diamond_axe"/>
     #   </Inventory>
+
+    
+    #       <!-- <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/> -->
+    #   <DrawingDecorator>
+    #     <!-- {tree_xml} -->
+    #   </DrawingDecorator>
+
+    #   <DrawingDecorator>
+    #     {tree_xml}
+    #   </DrawingDecorator>
 
 import random
 
@@ -167,9 +137,6 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 
     <ServerHandlers>
       <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/>
-      <DrawingDecorator>
-        {tree_xml}
-      </DrawingDecorator>
       <ServerQuitFromTimeUp timeLimitMs="60000"/>
       <ServerQuitWhenAnyAgentFinishes/>
     </ServerHandlers>
@@ -182,8 +149,8 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
     </AgentStart>
     <AgentHandlers>
       <VideoProducer want_depth="false">
-            <Width>''' + str(952) + '''</Width>
-            <Height>''' + str(540) + '''</Height>
+            <Width>''' + str(64) + '''</Width>
+            <Height>''' + str(64) + '''</Height>
         </VideoProducer>
       <ObservationFromFullStats/>
       <ContinuousMovementCommands turnSpeedDegs="180"/>
