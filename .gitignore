@@ -6,9 +6,10 @@ __pycache__/
 *.pyd
 .Python
 .venv/
+*.env/
+.env
 .venv-3.7/
 .pytest_cache
-env/
 ENV/
 .ipynb_checkpoints/
 build/
@@ -25,3 +26,6 @@ mineRL_training.h5
 checkpoints
 
 outputs
+wandb
+logs/
+checkpoints/

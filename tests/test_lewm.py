@@ -37,13 +37,12 @@ def predictor():
         cfg = compose(config_name="lewm")
 
         model = Predictor(
-            action_dim=cfg.action_dim,
             embedding_dim=cfg.vit.embedding_dim,
             attention_heads=cfg.predictor.attention_heads,
             mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
             dropout=cfg.predictor.dropout,
+            transformer_blocks=cfg.predictor.transformer_blocks,
             history_len=cfg.predictor.history_len,
-            transformer_blocks=cfg.predictor.transformer_blocks
         )
         model.eval()
         return model

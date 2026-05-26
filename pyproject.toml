@@ -13,7 +13,15 @@ dependencies = [
     "stable-worldmodel",
     "hydra-core",
     "pytest",
+    "torch",
+    "torchvision",
+    "h5py",
+    "pillow",
+    "wandb",
 ]
+
+[tool.setuptools]
+py-modules = ["lewm", "vit", "modules", "predictor", "utils"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

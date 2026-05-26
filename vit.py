@@ -40,7 +40,7 @@ class PatchEmbedding(nn.Module):
             Flatten and transpose into final dimensionality
         """
         # create patch embedding
-        input_embed = self.to_patch_embed(input)
+        input_embed = self.to_patch_embed(input.float())
         # flatten and transpose into (batch_size, num_patches, embedding_dim)
         # for our case, this will be [1, 64, 1024]
         input_embed_ft = input_embed.flatten(2).transpose(1, 2)
@@ -53,6 +53,8 @@ class Transformer(nn.Module):
         Reduces connections needed across the network (more efficient)
         Highlights most salient features instead of localizing (a limitation of CNN)
         Understands global features of image (via self attention mechanism)
+
+    Output: CLS token for a single frame (1, 64, 1024)
     """
     def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes):
         super().__init__()
@@ -81,7 +83,7 @@ class Transformer(nn.Module):
         input = self.mlp(input)
         input = input + residual2
 
-        # return processed token with same dimensions ([1, 64, 1024])
+        # return processed cls token with same dimensions ([1, 64, 1024])
         return input 
 
 class tinyViT(nn.Module):
@@ -119,7 +121,9 @@ class tinyViT(nn.Module):
         #   batch norm allows model to see global distribution of images for SIGReg loss
         self.projection_head = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),
-            nn.BatchNorm1d(embedding_dim)
+            nn.BatchNorm1d(embedding_dim),
+            nn.GELU(),
+            nn.Linear(embedding_dim, embedding_dim),
         )
     def forward(self, input):
         curr_batch = input.size(0) # get the current batch size
