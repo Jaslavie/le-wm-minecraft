@@ -44,3 +44,10 @@ predictor:
 optimizer:
   lr: 5e-5
   weight_decay: 1e-3
+
+# == Planner hyperparameters ==
+planner:
+  max_iter: 10
+  n_samples: 300
+  n_elites: 30
+  planning_horizon: 8

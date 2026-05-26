@@ -2,6 +2,24 @@ import numpy as np
 import torch
 import h5py
 
+def normalize_camera(action_t, cam_mean, cam_std):
+    """
+    turns raw camera trajectories to z-normalized numbers for training stability
+    returns updated action vector
+    """
+    action = action_t.clone()
+    action[..., 8:] = ((action[..., 8:] - cam_mean) / cam_std).float()
+    return action
+
+def get_cam_mean_std(dataset: str):
+    """fixed stats on the camera from training"""
+    with h5py.File(dataset.h5_path, "r") as f:
+        cam = torch.as_tensor(f["action"][:, 8:], dtype=torch.float32)
+    
+    mean = cam.mean(0, keepdim=True)
+    std = cam.std(0, keepdim=True)
+
+    return mean, std
 def normalize_columns(dataset:str, col: int, target_col: str):
     """
     adapted from https://github.com/lucas-maes/le-wm/blob/main/utils.py
@@ -15,15 +33,12 @@ def normalize_columns(dataset:str, col: int, target_col: str):
 
     # get the average and std of each column respectively
     # we are only interested in normalizing camera since 0/1 is accepted by tensor
-    cam = col_data_tensor[:, 8:]
-    cam_mean = cam.mean(0, keepdim=True).clone()
-    cam_std = cam.std(0, keepdim=True).clone()
+    cam_mean, cam_std = get_cam_mean_std(dataset.h5_path)
 
     # HDF5Dataset needs a callable function as the normalizer
     def transform(sample):
         action = torch.as_tensor(sample[col], dtype=torch.float32)
-        action = action.clone()
-        action[..., 8:] = ((action[..., 8:] - cam_mean) / cam_std).float()
+        action = normalize_camera(action, cam_mean, cam_std)
         sample[target_col] = action # set the original column to the new normalized value
         return sample
     
