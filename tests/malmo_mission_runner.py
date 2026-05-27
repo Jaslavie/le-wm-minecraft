@@ -1,22 +1,14 @@
 from __future__ import print_function
 from builtins import range
-from _LeWM_integration_layer import get_LeWM_action, process_LeWM_action, prepare_video_data
+from lewm_integration_layer import get_LeWM_action, process_LeWM_action, prepare_video_data
 import MalmoPython
 import os
 import sys
 import time
 import signal
 import pickle
+import socket
 
-frame_data = []
-
-def signal_handler(sig, frame):
-    with open("./video_frames.pkl", 'wb') as file:
-        pickle.dump(frame_data, file)
-
-    sys.exit(0)
-
-signal.signal(signal.SIGINT, signal_handler)
 
 if sys.version_info[0] == 2:
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)  # flush print output immediately
@@ -24,21 +16,22 @@ else:
     import functools
     print = functools.partial(print, flush=True)
 
-    #   <Inventory>
-    #     <InventoryItem slot="0" type="diamond_axe"/>
-    #   </Inventory>
+#   <Inventory>
+#     <InventoryItem slot="0" type="diamond_axe"/>
+#   </Inventory>
 
-    
-    #       <!-- <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/> -->
-    #   <DrawingDecorator>
-    #     <!-- {tree_xml} -->
-    #   </DrawingDecorator>
+#       <!-- <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/> -->
+#   <DrawingDecorator>
+#     <!-- {tree_xml} -->
+#   </DrawingDecorator>
 
-    #   <DrawingDecorator>
-    #     {tree_xml}
-    #   </DrawingDecorator>
+        # if setting != [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]: # For video generation, only save frames when the player is active
+        #     for frame in world_state.video_frames[-1]:
+        #         frame_data.append(prepare_video_data(frame))
 
-import random
+        # with open("./video_frames.pkl", 'wb') as file:
+#     print(type(frame_data))
+#     pickle.dump(frame_data, file)
 
 
 def draw_tree(x, y, z, r):
@@ -137,6 +130,9 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 
     <ServerHandlers>
       <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/>
+      <DrawingDecorator>
+        {tree_xml}
+      </DrawingDecorator>
       <ServerQuitFromTimeUp timeLimitMs="60000"/>
       <ServerQuitWhenAnyAgentFinishes/>
     </ServerHandlers>
@@ -160,8 +156,25 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
 </Mission>
 '''
 
-# Create default Malmo objects:
+# Create socket connection
+server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.bind(('localhost', 25565))
+server.listen(1)
 
+print("Listening for connection...")
+connection, address = server.accept()
+
+def exit_procedure():
+    connection.close()
+    server.close()
+
+def signal_handler(sig, frame):
+    exit_procedure()
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
+# Create default Malmo objects:
 agent_host = MalmoPython.AgentHost()
 try:
     agent_host.parse( sys.argv )
@@ -204,30 +217,21 @@ print("Mission running ")
 
 setting = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 done = False
-action_count = 0
 
 # Loop until mission ends:
-while world_state.is_mission_running and action_count < 19:
+while world_state.is_mission_running and not done:
     world_state = agent_host.getWorldState()
-    action_list = [0] * 10
+
+    action_list = []
 
     for error in world_state.errors:
         print("Error:",error.text)
 
     if world_state.number_of_video_frames_since_last_state > 0:
-        if setting != [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]: # For video generation, only save frames when the player is active
-            for frame in world_state.video_frames:
-                frame_data.append(prepare_video_data(frame))
+        frame = prepare_video_data(world_state.video_frames[-1])
+        action = get_LeWM_action(frame, connection, setting) # TODO: Pass frame into working model
+        action_list = process_LeWM_action(action, setting)
 
-        # for frame in frame_data:
-        #     action_list = get_LeWM_action(frame) # TODO: Pass frame into working model
-
-    # TODO: Don't send any action input for now
-    action_list, action_count = get_LeWM_action(action_count, 19) # [input("Enter next action command: ")] # [0] * 10
-
-    action_list = process_LeWM_action(action_list, setting)
-
-    if not done:
         print(action_list)
         done = True
 
@@ -236,9 +240,7 @@ while world_state.is_mission_running and action_count < 19:
 
     time.sleep(0.1)
 
-with open("./video_frames.pkl", 'wb') as file:
-    print(type(frame_data))
-    pickle.dump(frame_data, file)
+exit_procedure()
 print()
 print("Mission ended")
 # Mission has ended.

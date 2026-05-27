@@ -1,17 +1,23 @@
-# from vit import tinyViT
+import select
+import pickle
 
-def get_LeWM_action(action_count, n):
+def get_LeWM_action(frame, connection, setting):
     # This function is currently a stub
     #[ forward, left, back, right, jump, sneak, sprint, attack , camera, camera]
 
-    if action_count < n:
-        action = [0, 0, 0, 0, 0, 0, 0, 0, 1, 0]
+    connection.sendall(frame) # (frame + "\n").encode()
+
+    have_mail, _, _ = select.select([connection], [], [], 0)
+
+    if have_mail:
+        action = pickle.loads(connection.recv(1024))
+
+        if action == "":
+            action = setting
     else:
-        action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        action = setting
 
-    action_count += 1
-
-    return action, action_count
+    return action
 
 def process_LeWM_action(action_list, current):
     # Convert array into instructions
