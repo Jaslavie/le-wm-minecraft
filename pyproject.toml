@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [tool.setuptools]
-py-modules = ["lewm", "vit", "modules", "predictor", "utils"]
+py-modules = ["lewm", "vit", "modules", "predictor", "utils", "planner"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

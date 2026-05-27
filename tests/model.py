@@ -63,7 +63,7 @@ def process_frame_pixels(frame):
 
     return img_t
 
-@hydra.main(version_base=None, config_path="./config", config_name="lewm")
+@hydra.main(version_base=None, config_path="../config", config_name="lewm")
 def main():
     # Initialize variables
     checkpoint = torch.load("best_model.pt", map_location="cpu")
