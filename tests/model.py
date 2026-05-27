@@ -8,7 +8,6 @@ import  stable_worldmodel as swm
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from hydra import initialize, compose
 from torchvision import transforms
 from omegaconf import DictConfig
 
@@ -64,19 +63,17 @@ def process_frame_pixels(frame):
     return img_t
 
 @hydra.main(version_base=None, config_path="../config", config_name="lewm")
-def main():
+def main(cfg: DictConfig):
     # Initialize variables
     checkpoint = torch.load("best_model.pt", map_location="cpu")
     action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     goal_file = "./goal_frame.pkl"
-    cam_mean, cam_std = utils.get_cam_mean_std("mineRL_training.h5")
-    
+    dataset = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
+    cam_mean, cam_std = utils.get_cam_mean_std(dataset)
 
     # Read file values
     with open(goal_file, "rb") as file:
         goal_frame = pickle.load(file)[0]
-    with initialize(config_path="./config", version_base=None):
-        cfg = compose(config_name="lewm")
 
     # Initialize models
     lewm_model = load_trained_lewm(cfg, checkpoint)
