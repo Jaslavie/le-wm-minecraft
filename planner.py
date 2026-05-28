@@ -23,7 +23,7 @@ class Planner:
         """
         return F.mse_loss(z_H.reshape(-1), z_g.reshape(-1))
 
-    def planner(self, lewm, obs, obs_goal, cam_mean, cam_std):
+    def planner(self, lewm, obs, obs_goal, cam_mean, cam_std, sigreg_lambd=0.1, warm_start=None):
         """
         Samples and selects the best action sequence to take given a single
         current observation and goal observation.
@@ -35,7 +35,8 @@ class Planner:
         Outputs: (H, A) best action sequence found after max_iter
         """
         # initialize mu and sigma for sampling distribution
-        mu = np.zeros((self.horizon, self.action_dim))
+        # warm start takes the most recent action sequence as context
+        mu = np.zeros((self.horizon, self.action_dim)) if warm_start is None else warm_start[-1]
         sigma = np.ones((self.horizon, self.action_dim))
 
         # send to gpu if available
@@ -55,8 +56,11 @@ class Planner:
             lewm.eval()
             z1 = lewm.encoder(obs) # current frame
             zg = lewm.encoder(obs_goal) # ex: tree
+        current_goal_mse = self.objective_function(z1, zg).item()
         print(f"planner: encoded obs {tuple(z1.shape)}, goal {tuple(zg.shape)}")
 
+        best_z_pred_hist = None # store best prediction embedding
+        best_score = None
         for cem_iter in range(self.max_iter):
             # 1. Action sampling: sample 300 candidate action samples (n_samples)
             #   each sample contains action sequences up to time horizon (H)
@@ -70,6 +74,7 @@ class Planner:
             samples[..., 8:] = np.random.normal(mu[:, 8:], sigma[:, 8:], size=(self.n_samples, self.horizon, 2)) # camera
 
             scores = []
+            rollout_hists = []
             for sample_idx, actions in enumerate(samples):
                 # 2. Rollout actions in world model (imagination)
                 # store history of past 8 observations and actions. recall that predictor
@@ -101,8 +106,10 @@ class Planner:
                 z_H = z_pred_hist[-1].view(-1)
 
                 # 3. Compute cost: how close imagined final state is to fixed goal zg
-                score = self.objective_function(z_H, zg)
-                scores.append(score.item())
+                # add current score
+                score = self.objective_function(z_H, zg).item()
+                scores.append(score)
+                rollout_hists.append(z_pred_hist)
 
                 if (sample_idx + 1) % 50 == 0 or sample_idx + 1 == self.n_samples:
                     print(
@@ -116,9 +123,25 @@ class Planner:
 
             mu = elites.mean(axis=0)
             sigma = elites.std(axis=0) + 1e-6
-            best_score = scores[elite_idx[0]]
+            best_elite_idx = elite_idx[0]
+            best_score = scores[best_elite_idx]
+            best_z_pred_hist = rollout_hists[best_elite_idx]
             print(f"Planner iteration: {cem_iter + 1}/{self.max_iter}: {best_score:.4f}")
 
-        # 4. Action selection: return the mean of elites 
-        print(f"Planner iteration: final: {best_score:.4f}")
-        return mu
+        # 4. Action selection: return the mean of elites
+        z_H = best_z_pred_hist[-1]
+        imagined_goal_mse = self.objective_function(z_H, zg).item()
+
+        planning_losses = {
+            "current_goal_mse": current_goal_mse,
+            "cem_best_cost": best_score,
+            "imagined_goal_mse": imagined_goal_mse,
+        }
+        print(
+            f"FINAL SCORE ======"
+            f"current_goal_mse={planning_losses['current_goal_mse']:.4f},"
+            f"cem_best_cost={planning_losses['cem_best_cost']:.4f}, "
+            f"imagined_goal_mse={planning_losses['imagined_goal_mse']:.4f}"
+        )
+        
+        return mu, planning_losses

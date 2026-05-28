@@ -191,6 +191,8 @@ Indices **0–7** are binary `{0, 1}`. Indices **8–9** are camera deltas in de
 timestamp 0 = [1, 1, 0, 0, 0, 0, 0, 0, <pitch>, <yaw>]
 ```
 
+## Performance
+
 ## Shape annotation key
 
 

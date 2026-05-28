@@ -68,7 +68,7 @@ def test_planner_returns_valid_plan(planner_config, lewm_config):
     cam_mean, cam_std = get_cam_mean_std(dataset)
     
     # run planner
-    mu = planner_config.planner(lewm_config, obs, obs_goal, cam_mean, cam_std)
+    mu, _ = planner_config.planner(lewm_config, obs, obs_goal, cam_mean, cam_std)
 
     # check
     print(f"mu shape: {mu.shape}")
