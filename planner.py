@@ -48,6 +48,7 @@ class Planner:
         obs_goal = obs_goal.to(device)
         cam_mean = cam_mean.to(device)
         cam_std = cam_std.to(device)
+        lewm.to(device)
 
         # encode the obs and obs_goal
         with torch.no_grad():
@@ -91,12 +92,11 @@ class Planner:
                     z_pred = next_emb[:, -1:, :]
                     z_pred_hist.append(z_pred)
 
-                # get final predicted obs at end of horizon   
-                z_pred_hist = z_pred_hist[-1].view(-1)
+                # final predicted embedding at end of horizon (192,)
+                z_H = z_pred_hist[-1].view(-1)
 
                 # 3. Compute cost: how close imagined final state is to fixed goal zg
-                # cost should decrease over time as the model moves closer to the goal
-                score = self.objective_function(z_pred_hist[-1].view(-1), zg)
+                score = self.objective_function(z_H, zg.view(-1))
                 scores.append(score.item())
 
             #  update distribution parameters based on elites
