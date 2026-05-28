@@ -147,13 +147,21 @@ def main():#cfg: DictConfig):
         print(f"finished processing: obs={obs.shape}, goal_obs={goal_obs.shape}")
 
         # Plan when action queue is empty
+        last_mu = None
         if not action_queue:
-            # TODO: Update warm start 
+            warm_start = None
+            
+            # Set warm start
+            # shifts previous plan one step forward (drops first actions, which we
+            # assume has been taken at this point)
+            if last_mu is not None:
+                warm_start = np.concatenate([last_mu[1:], last_mu[-1:]], axis=0)
             
             # Planner embeds obs with vit in its pipeline
             mu, planning_losses = planner.planner(
-                lewm_model, obs, goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start=None
+                lewm_model, obs, goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start=warm_start
             )
+            last_mu = mu
             action_queue = list(utils.planner_output_to_actions(mu, cam_mean, cam_std))
             
             current_goal_mses.append(planning_losses["current_goal_mse"])

@@ -4,6 +4,9 @@ from utils import normalize_columns
 import hydra
 import wandb
 import torch
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
 from torch.utils.data import DataLoader, Subset
@@ -100,6 +103,8 @@ def train_model(cfg: DictConfig):
     model_path.parent.mkdir(parents=True, exist_ok=True)
     best_model_path = checkpoint_dir / "best_model.pt"
     best_val_loss = float("inf")
+    train_epoch_losses = []
+    val_epoch_losses = []
 
     # run training over epochs
     for epoch in range(cfg.total_epochs):
@@ -177,6 +182,9 @@ def train_model(cfg: DictConfig):
         avg_val_pred_loss = validation_pred_loss / len(val)
         avg_val_sigreg_loss = validation_sigreg_loss / len(val)
 
+        train_epoch_losses.append(avg_train_loss)
+        val_epoch_losses.append(avg_val_loss)
+
         checkpoint_payload = {
             "epoch": epoch,
             "model_state_dict": lewm.state_dict(),
@@ -213,7 +221,21 @@ def train_model(cfg: DictConfig):
             "val/epoch_sigreg_loss": avg_val_sigreg_loss,
             "val/epoch_weighted_sigreg_loss": cfg.sigreg.lambd * avg_val_sigreg_loss,
             "lr": scheduler.get_last_lr()[0],
+            "epoch": epoch,
         })
+
+        epochs = list(range(len(train_epoch_losses)))
+        fig, ax = plt.subplots()
+        ax.plot(epochs, train_epoch_losses, marker="o", label="train")
+        ax.plot(epochs, val_epoch_losses, marker="o", label="val")
+        ax.set_xlabel("epoch")
+        ax.set_ylabel("loss")
+        ax.set_title("Train vs validation loss")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        fig.tight_layout()
+        wandb.log({"train_val/epoch_loss": wandb.Image(fig), "epoch": epoch})
+        plt.close(fig)
 
         print(f"Total Training loss for epoch {epoch}: {avg_train_loss} (pred={avg_train_pred_loss:.6f}, sigreg={avg_train_sigreg_loss:.6f})")
         print(f"Total Validation loss for epoch {epoch}: {avg_val_loss} (pred={avg_val_pred_loss:.6f}, sigreg={avg_val_sigreg_loss:.6f})")
