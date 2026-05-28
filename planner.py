@@ -21,7 +21,7 @@ class Planner:
         at the end of a time horizon (z_H) with the latent embedding of the target (z_g)
         to evaluate if the model reached the goal state
         """
-        return F.mse_loss(z_H, z_g)
+        return F.mse_loss(z_H.reshape(-1), z_g.reshape(-1))
 
     def planner(self, lewm, obs, obs_goal, cam_mean, cam_std):
         """
@@ -48,23 +48,29 @@ class Planner:
         obs_goal = obs_goal.to(device)
         cam_mean = cam_mean.to(device)
         cam_std = cam_std.to(device)
+        lewm.to(device)
 
         # encode the obs and obs_goal
         with torch.no_grad():
             lewm.eval()
             z1 = lewm.encoder(obs) # current frame
             zg = lewm.encoder(obs_goal) # ex: tree
+        print(f"planner: encoded obs {tuple(z1.shape)}, goal {tuple(zg.shape)}")
 
-        for _ in range(self.max_iter):
+        for cem_iter in range(self.max_iter):
             # 1. Action sampling: sample 300 candidate action samples (n_samples)
             #   each sample contains action sequences up to time horizon (H)
+            print(
+                f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
+                f"rolling out {self.n_samples} samples (H={self.horizon})"
+            )
             samples = np.zeros((self.n_samples, self.horizon, self.action_dim))
             samples[..., :8] = np.random.normal(mu[:, :8], sigma[:, :8], size=(self.n_samples, self.horizon, 8)) # binary actions
             samples[..., :8] = (samples[..., :8] > 0.5).astype(np.float32) # binarize
             samples[..., 8:] = np.random.normal(mu[:, 8:], sigma[:, 8:], size=(self.n_samples, self.horizon, 2)) # camera
 
             scores = []
-            for actions in samples:
+            for sample_idx, actions in enumerate(samples):
                 # 2. Rollout actions in world model (imagination)
                 # store history of past 8 observations and actions. recall that predictor
                 # only has access to last 8 actions/obs in its memory
@@ -91,13 +97,18 @@ class Planner:
                     z_pred = next_emb[:, -1:, :]
                     z_pred_hist.append(z_pred)
 
-                # get final predicted obs at end of horizon   
-                z_H = z_pred[:, -1, :]#z_pred_hist[-1].view(-1)
+                # final predicted embedding at end of horizon (192,)
+                z_H = z_pred_hist[-1].view(-1)
 
                 # 3. Compute cost: how close imagined final state is to fixed goal zg
-                # cost should decrease over time as the model moves closer to the goal
                 score = self.objective_function(z_H, zg)
                 scores.append(score.item())
+
+                if (sample_idx + 1) % 50 == 0 or sample_idx + 1 == self.n_samples:
+                    print(
+                        f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
+                        f"{sample_idx + 1}/{self.n_samples} rollouts scored"
+                    )
 
             #  update distribution parameters based on elites
             elite_idx = np.argsort(scores)[:self.n_elites] # top n_elites
@@ -105,6 +116,9 @@ class Planner:
 
             mu = elites.mean(axis=0)
             sigma = elites.std(axis=0) + 1e-6
+            best_score = scores[elite_idx[0]]
+            print(f"Planner iteration: {cem_iter + 1}/{self.max_iter}: {best_score:.4f}")
 
         # 4. Action selection: return the mean of elites 
+        print(f"Planner iteration: final: {best_score:.4f}")
         return mu

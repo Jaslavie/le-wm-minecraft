@@ -45,6 +45,49 @@ python -m pytest
 
 Note: `test_planner.py` requires `best_model.pt` to exist.
 
+### Running Malmo
+
+**The following is for Mac users.** We recommend the [Malmo container](https://hub.docker.com/layers/andkram/malmo_build_headless_0_35_6/latest/images/sha256-cb22e8a1d5aed24e8f169b7f8c95d0d10e2e84010694edb05c05f2cce35000ba) (note: this image is quite old). After pulling the image:
+
+**1. Start the container** (from repo root; bind-mount this repo into the container):
+
+```bash
+docker run -d \
+  --platform linux/amd64 \
+  -p 25565:25565 \
+  -v <path_to>/le-wm-minecraft:/home/malmo/le-wm-minecraft \
+  --name malmo \
+  andkram/malmo:latest
+```
+
+**2. Inside the container** — start the Malmo mission runner (Python 3.5 + `Malmo/py27/` integration layer):
+
+```bash
+docker exec -it malmo bash
+cd /home/malmo/le-wm-minecraft
+python3.5 Malmo/py27/malmo_mission_runner_py27.py
+```
+
+Wait for:
+
+```text
+Mission running — starting LeWM socket on 0.0.0.0:25565
+Listening for connection...
+```
+
+**3. On your Mac** (repo root, same venv as training) — run the LeWM client:
+
+```bash
+python run_lewm_client.py
+```
+
+
+| Where     | Command                                             | Role                                                            |
+| --------- | --------------------------------------------------- | --------------------------------------------------------------- |
+| Container | `python3.5 Malmo/py27/malmo_mission_runner_py27.py` | Malmo server — sends frames, receives actions on port **25565** |
+| Client    | `python run_lewm_client.py`                         | LeWM client — plans with CEM, sends `mu[0]` back                |
+
+
 ## Current Art
 
 TBD

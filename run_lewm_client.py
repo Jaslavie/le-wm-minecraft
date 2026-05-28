@@ -1,6 +1,7 @@
 import pickle
 import torch
 import socket
+import time
 # import hydra
 import numpy as np
 from PIL import Image
@@ -74,6 +75,8 @@ def main():#cfg: DictConfig):
     # Read file values
     with open(goal_file, "rb") as file:
         goal_frame = pickle.load(file)[0]
+
+    # Preprocess goal frame
     goal_obs = process_frame_pixels(transform, goal_frame)
 
     # Initialize models
@@ -95,6 +98,7 @@ def main():#cfg: DictConfig):
     # Begin loop
     done = False
     while not done:
+        start = time.perf_counter()
         # Receive frame
         frame = client.recv(64 * 64 * 3)
 
@@ -106,23 +110,23 @@ def main():#cfg: DictConfig):
             # plt.imshow(bytes_to_image(frame))
             # plt.show()
 
-            # Preprocess current observation and goal (1, 3, 64, 64)
+            # Preprocess current observation (1, 3, 64, 64)
             obs = process_frame_pixels(transform, frame)
+            print(f"finished processing: obs={obs.shape}, goal_obs={goal_obs.shape}")
 
             # Planner embeds obs with vit in its pipeline
-            # print("Running planner...")
             mu = planner.planner(lewm_model, obs, goal_obs, cam_mean, cam_std)
+            print(f"finished planning: mu={mu.shape}")
 
-            # TEMP for debugging
-            # action = [0.0, 1.0, 1.0, 0.0, 0.8333333333333334, 1.0, 1.0, 0.0, -4.33028701822673, 0.9151116705668512]
-            action = mu[0].tolist()
+            action_to_take = utils.planner_output_to_actions(mu, cam_mean, cam_std)[0]
+            input(f"Current action: {action_to_take} \n Press ENTER to continue...")
 
+            end = time.perf_counter()
+            print(f"Runtime: {end - start:.4f} seconds")
             # input(f"Current action: {action}\n Press ENTER to continue...")
 
-            # print(len(embeddings))
-
-            client.sendall(pickle.dumps(action))
-
+            # Send actions to Malmo to perform
+            client.sendall(pickle.dumps(action_to_take.tolist()))
     client.close()
 
 if __name__ == "__main__":
