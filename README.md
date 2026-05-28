@@ -45,6 +45,33 @@ python -m pytest
 
 Note: `test_planner.py` requires `best_model.pt` to exist.
 
+### Running Malmo
+
+**The following is for macbook users. We recommend to use this [Malmo container](https://hub.docker.com/layers/andkram/malmo_build_headless_0_35_6/latest/images/sha256-cb22e8a1d5aed24e8f169b7f8c95d0d10e2e84010694edb05c05f2cce35000ba) (beware this is quite old!). After downloading and running the container, do the following:
+
+```
+# start the container on port 25565
+# first, cd into le-wm-minecraft. You will need to bind this to the container first
+docker run -d \
+  --platform linux/amd64 \
+  -p 25565:25565 \
+  -v <path_to>/le-wm-minecraft:/home/malmo/le-wm-minecraft \
+  --name malmo \
+  andkram/malmo:latest
+
+# inside the container, run the malmo script with 3.5 flag as Malmo will be stored in
+# be sure to check the location of malmo since this may be different on other containers
+python3.5 tests/malmo_mission_runner_py27.py
+
+# if it says "Listening for connection" then it works!
+```
+
+In le-wm-minecraft (port 25565  is already defined)
+
+```
+python tests/model.py
+```
+
 ## Current Art
 
 TBD
