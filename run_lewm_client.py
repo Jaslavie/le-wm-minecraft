@@ -1,6 +1,7 @@
 import pickle
 import torch
 import socket
+import time
 import hydra
 import numpy as np
 from PIL import Image
@@ -89,32 +90,36 @@ def main(cfg: DictConfig):
     print("Establishing connection...", end="")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(('localhost', 25565))
-    print("Connected!")
+    print(f"Connected!")
 
     # Begin loop
     done = 0
     while not done:
+        start = time.perf_counter()
         # Receive frame
         frame = client.recv(64 * 64 * 3)
         print("Frame received!")
-        plt.figure()
-        plt.imshow(bytes_to_image(frame))
-        plt.show()
+        # plt.figure()
+        # plt.imshow(bytes_to_image(frame))
+        # plt.show()
         
         # Preprocess current observation and goal (1, 3, 64, 64)
         goal_obs = process_frame_pixels(goal_frame)
         obs = process_frame_pixels(frame)
+        print(f"finished processing: obs={obs.shape}, goal_obs={goal_obs.shape}")
 
-        # Planner embeds obs with vit in its pipeline 
+        # Planner embeds obs with vit in its pipeline
         mu = planner.planner(lewm_model, obs, goal_obs, cam_mean, cam_std)
+        print(f"finished planning: mu={mu.shape}")
+        
+        action_to_take = utils.planner_output_to_actions(mu, cam_mean, cam_std)[0]
+        input(f"Current action: {action_to_take} \n Press ENTER to continue...")
+        
+        end = time.perf_counter()
+        print(f"Runtime: {end - start:.4f} seconds")
 
-        action = mu[0]
-
-        input(f"Current action: {action}\n Press ENTER to continue...")
-
-        # print(len(embeddings))
-
-        client.sendall(pickle.dumps(action))
+        # Send actions to Malmo to perform
+        client.sendall(pickle.dumps(action_to_take.tolist()))
 
         done += 1
     client.close()

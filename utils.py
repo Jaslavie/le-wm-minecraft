@@ -31,7 +31,7 @@ def planner_output_to_actions(mu, cam_mean, cam_std, binary_threshold=0.5):
     std = cam_std.detach().cpu().numpy() if torch.is_tensor(cam_std) else np.asarray(cam_std)
     actions[:, 8:] = actions[:, 8:] * std + mean
 
-    return actions[0] if actions.shape[0] == 1 else actions
+    return [actions[0]] if actions.shape[0] == 1 else actions
 
 def get_cam_mean_std(dataset: str):
     """fixed stats on the camera from training"""
