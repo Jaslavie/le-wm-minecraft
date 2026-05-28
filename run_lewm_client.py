@@ -1,15 +1,15 @@
 import pickle
 import torch
 import socket
-import hydra
+# import hydra
 import numpy as np
 from PIL import Image
-import  stable_worldmodel as swm
+# import  stable_worldmodel as swm
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
 from torchvision import transforms
-from omegaconf import DictConfig
+from omegaconf import DictConfig, OmegaConf
 
 # Project files
 import predictor
@@ -51,29 +51,30 @@ def load_trained_lewm(cfg: DictConfig, checkpoint):
 
     return lewm_model
 
-def process_frame_pixels(frame):
+def process_frame_pixels(transform, frame):
     """resizes raw malmo frame to 64x64"""
-    transform = transforms.Compose([
-            transforms.Resize((64, 64)),
-            transforms.ToTensor(),
-        ])
 
     img_t = transform(bytes_to_image(frame)).unsqueeze(0) # (1, 3, 64, 64)
 
     return img_t
 
-@hydra.main(version_base=None, config_path="./config", config_name="lewm")
-def main(cfg: DictConfig):
+# @hydra.main(version_base=None, config_path="./config", config_name="lewm")
+def main():#cfg: DictConfig):
     # Initialize variables
     checkpoint = torch.load("best_model.pt", map_location="cpu")
+    cfg = OmegaConf.load("./config/lewm.yaml")
     action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     goal_file = "./goal_frame.pkl"
-    # dataset = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
     cam_mean, cam_std = utils.get_cam_mean_std("mineRL_training.h5")
+    transform = transforms.Compose([
+        transforms.Resize((64, 64)),
+        transforms.ToTensor(),
+    ])
 
     # Read file values
     with open(goal_file, "rb") as file:
         goal_frame = pickle.load(file)[0]
+    goal_obs = process_frame_pixels(transform, goal_frame)
 
     # Initialize models
     lewm_model = load_trained_lewm(cfg, checkpoint)
@@ -92,31 +93,36 @@ def main(cfg: DictConfig):
     print("Connected!")
 
     # Begin loop
-    done = 0
+    done = False
     while not done:
         # Receive frame
         frame = client.recv(64 * 64 * 3)
-        print("Frame received!")
-        plt.figure()
-        plt.imshow(bytes_to_image(frame))
-        plt.show()
-        
-        # Preprocess current observation and goal (1, 3, 64, 64)
-        goal_obs = process_frame_pixels(goal_frame)
-        obs = process_frame_pixels(frame)
 
-        # Planner embeds obs with vit in its pipeline 
-        mu = planner.planner(lewm_model, obs, goal_obs, cam_mean, cam_std)
+        if not frame:
+            done = True
+        else:
+            # print("Frame received!")
+            # plt.figure()
+            # plt.imshow(bytes_to_image(frame))
+            # plt.show()
 
-        action = mu[0]
+            # Preprocess current observation and goal (1, 3, 64, 64)
+            obs = process_frame_pixels(transform, frame)
 
-        input(f"Current action: {action}\n Press ENTER to continue...")
+            # Planner embeds obs with vit in its pipeline
+            # print("Running planner...")
+            mu = planner.planner(lewm_model, obs, goal_obs, cam_mean, cam_std)
 
-        # print(len(embeddings))
+            # TEMP for debugging
+            # action = [0.0, 1.0, 1.0, 0.0, 0.8333333333333334, 1.0, 1.0, 0.0, -4.33028701822673, 0.9151116705668512]
+            action = mu[0].tolist()
 
-        client.sendall(pickle.dumps(action))
+            # input(f"Current action: {action}\n Press ENTER to continue...")
 
-        done += 1
+            # print(len(embeddings))
+
+            client.sendall(pickle.dumps(action))
+
     client.close()
 
 if __name__ == "__main__":

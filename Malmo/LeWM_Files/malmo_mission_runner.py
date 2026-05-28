@@ -6,7 +6,6 @@ import os
 import sys
 import time
 import signal
-import pickle
 import socket
 
 
@@ -133,7 +132,7 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
       <DrawingDecorator>
         {tree_xml}
       </DrawingDecorator>
-      <ServerQuitFromTimeUp timeLimitMs="60000"/>
+      <!-- <ServerQuitFromTimeUp timeLimitMs="60000"/> -->
       <ServerQuitWhenAnyAgentFinishes/>
     </ServerHandlers>
   </ServerSection>
@@ -149,7 +148,8 @@ missionXML = f'''<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
             <Height>''' + str(64) + '''</Height>
         </VideoProducer>
       <ObservationFromFullStats/>
-      <ContinuousMovementCommands turnSpeedDegs="180"/>
+      <DiscreteMovementCommands/>
+      <!-- <ContinuousMovementCommands turnSpeedDegs="180"/> -->
     </AgentHandlers>
   </AgentSection>
 
@@ -222,21 +222,22 @@ done = False
 while world_state.is_mission_running and not done:
     world_state = agent_host.getWorldState()
 
-    action_list = []
+    while world_state.number_of_video_frames_since_last_state == 0 and world_state.is_mission_running:
+        world_state = agent_host.getWorldState()
 
-    for error in world_state.errors:
-        print("Error:",error.text)
-
-    if world_state.number_of_video_frames_since_last_state > 0:
-        frame = prepare_video_data(world_state.video_frames[-1])
-        action = get_LeWM_action(frame, connection, setting) # TODO: Pass frame into working model
-        action_list = process_LeWM_action(action, setting)
-
-        print(action_list)
+    # If mission ended while waiting, break cleanly
+    if not world_state.is_mission_running:
         done = True
+    else:
+        frame = prepare_video_data(world_state.video_frames[-1])
+        action = get_LeWM_action(frame, connection, setting)
+        action_list = process_LeWM_action(action, setting, True)
 
-    for action in action_list:
-        agent_host.sendCommand(action)
+        if action_list:
+            print(action_list)
+
+        for action in action_list:
+            agent_host.sendCommand(action)
 
     time.sleep(0.1)
 
