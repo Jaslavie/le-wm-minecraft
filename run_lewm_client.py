@@ -19,7 +19,7 @@ import utils
 
 def bytes_to_image(frame):
     image = np.frombuffer(frame, dtype=np.uint8)
-    image = image.reshape((540, 952, 3)) # malmo is 540, 952
+    image = image.reshape((64, 64, 3)) # malmo is 540, 952
     image = Image.fromarray(image)
 
     return image
@@ -62,14 +62,14 @@ def process_frame_pixels(frame):
 
     return img_t
 
-@hydra.main(version_base=None, config_path="../config", config_name="lewm")
+@hydra.main(version_base=None, config_path="./config", config_name="lewm")
 def main(cfg: DictConfig):
     # Initialize variables
     checkpoint = torch.load("best_model.pt", map_location="cpu")
     action = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     goal_file = "./goal_frame.pkl"
-    dataset = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
-    cam_mean, cam_std = utils.get_cam_mean_std(dataset)
+    # dataset = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
+    cam_mean, cam_std = utils.get_cam_mean_std("mineRL_training.h5")
 
     # Read file values
     with open(goal_file, "rb") as file:
@@ -86,14 +86,16 @@ def main(cfg: DictConfig):
     )
 
     # Connect to server socket
+    print("Establishing connection...", end="")
     client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     client.connect(('localhost', 25565))
+    print("Connected!")
 
     # Begin loop
     done = 0
     while not done:
         # Receive frame
-        frame = client.recv(952 * 540 * 3)
+        frame = client.recv(64 * 64 * 3)
         print("Frame received!")
         plt.figure()
         plt.imshow(bytes_to_image(frame))
