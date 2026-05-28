@@ -13,7 +13,7 @@ def normalize_camera(action_t, cam_mean, cam_std):
 
 def get_cam_mean_std(dataset: str):
     """fixed stats on the camera from training"""
-    with h5py.File(dataset.h5_path, "r") as f:
+    with h5py.File(dataset, "r") as f:
         cam = torch.as_tensor(f["action"][:, 8:], dtype=torch.float32)
     
     mean = cam.mean(0, keepdim=True)
