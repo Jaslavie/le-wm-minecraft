@@ -9,6 +9,7 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 ## Table of Contents
 
 - [Getting started](#getting-started)
+- [Project structure](#project-structure)
 - [Architecture](#architecture)
   - [Le World Model](#le-world-model)
   - [Action Embedder](#action-embedder)
@@ -28,14 +29,14 @@ python -m pip install -e .
 ```
 
 1. Download dataset into your local repo
-2. Run the data_processing.ipynb file in full. This loads the processed data into the data folder. This is necesary for training
+2. Run `notebooks/01_data_processing.ipynb` in full. This loads the processed data into the `data/` folder. This is necessary for training
 3. Begin training
 
 ```
-python train.py
+python scripts/train.py
 ```
 
-Trained model checkpoints will be stored in the `checkpoints` folder.
+Trained model checkpoints will be stored in `artifacts/checkpoints/`.
 
 1. Run tests
 
@@ -43,7 +44,49 @@ Trained model checkpoints will be stored in the `checkpoints` folder.
 python -m pytest
 ```
 
-Note: `test_planner.py` requires `best_model.pt` to exist.
+Note: `test_planner.py` requires `artifacts/checkpoints/best_model.pt` to exist.
+
+## Project structure
+
+```
+le-wm-minecraft/
+├── src/lewm/              # installable Python package
+│   ├── models/            # LeWM, ViT encoder, predictor, action embedder
+│   ├── planning/          # CEM planner
+│   ├── data/              # dataset normalization helpers
+│   └── paths.py           # repo-root path helper
+├── scripts/               # train.py, run_lewm_client.py
+├── notebooks/             # data prep and debugging notebooks
+├── config/lewm.yaml       # hyperparameters and artifact paths
+├── data/                  # raw MineRL data + mineRL_training.h5
+├── artifacts/
+│   ├── checkpoints/       # best_model.pt, epoch_*.pt
+│   └── fixtures/          # goal_frame.pkl, video_frames.pkl
+└── Malmo/LeWM_Files/      # Malmo server integration (Python 3.5)
+```
+
+After `pip install -e .`, import from the `lewm` package:
+
+```python
+from lewm import LeWM, Planner, compute_loss
+from lewm.models.vit import tinyViT
+from lewm.models.predictor import Predictor
+from lewm.data.utils import normalize_columns, get_cam_mean_std
+from lewm.paths import repo_path
+
+# resolve paths from repo root (works regardless of cwd)
+cfg_path = repo_path("config", "lewm.yaml")
+checkpoint = repo_path("artifacts/checkpoints/best_model.pt")
+dataset_h5 = repo_path("data/mineRL_training.h5")
+goal_frame = repo_path("artifacts/fixtures/goal_frame.pkl")
+```
+
+Scripts and notebooks use the same imports. Run scripts from the repo root:
+
+```bash
+python scripts/train.py
+python scripts/run_lewm_client.py
+```
 
 ### Running Malmo
 
@@ -78,14 +121,14 @@ Listening for connection...
 **3. On your Mac** (repo root, same venv as training) — run the LeWM client:
 
 ```bash
-python run_lewm_client.py
+python scripts/run_lewm_client.py
 ```
 
 
 | Where     | Command                                             | Role                                                            |
 | --------- | --------------------------------------------------- | --------------------------------------------------------------- |
 | Container | `python3.5 Malmo/py27/malmo_mission_runner_py27.py` | Malmo server — sends frames, receives actions on port **25565** |
-| Client    | `python run_lewm_client.py`                         | LeWM client — plans with CEM, sends `mu[0]` back                |
+| Client    | `python scripts/run_lewm_client.py`                 | LeWM client — plans with CEM, sends `mu[0]` back                |
 
 
 ## Current Art
@@ -171,7 +214,7 @@ At each iteration, Cross-Entropy Method is used to sample **300** candidate sequ
 
 We use the MineRL dataset for training. The initial dataset looks like this: `data/MineRLTreechop-v0/<trajectory>/` with subfiles `recording.mp4`, `rendered.npz`, `metadata.json`.
 
-After pre-processing, we get `actions.npy`: a binary numpy array of actions activated at each timestamp.
+After pre-processing, the consolidated HDF5 lives at `data/mineRL_training.h5`. Per-trajectory `actions.npy` files are written under `data/MineRLTreechop-v0/<trajectory>/`.
 
 - **Size**: 210 trajectories, 453,496 total timesteps.
 - **Video frame dimensions**: 64 x 64 RGB

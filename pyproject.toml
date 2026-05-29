@@ -20,8 +20,8 @@ dependencies = [
     "wandb",
 ]
 
-[tool.setuptools]
-py-modules = ["lewm", "vit", "modules", "predictor", "utils", "planner"]
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
+pythonpath = ["src"]

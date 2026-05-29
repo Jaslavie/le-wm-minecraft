@@ -27,7 +27,10 @@ wandb
 
 # training data
 mineRL_training.h5
-checkpoints
+data/mineRL_training.h5
+
+# generated artifacts
+artifacts/
 
 outputs
 wandb

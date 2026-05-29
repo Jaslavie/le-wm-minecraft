@@ -2,8 +2,20 @@ defaults:
   - _self_
 
 config_name: ${hydra:job.name}
-checkpoint_path: checkpoints # per-epoch training state: checkpoints/epoch_000.pt, ...
-model_path: checkpoints/latest_model.pt
+
+paths:
+  data_dir: data
+  dataset_h5: data/mineRL_training.h5
+  checkpoint_dir: artifacts/checkpoints
+  best_model: artifacts/checkpoints/best_model.pt
+  latest_model: artifacts/checkpoints/latest_model.pt
+  fixtures_dir: artifacts/fixtures
+  goal_frame: artifacts/fixtures/goal_frame.pkl
+  video_frames: artifacts/fixtures/video_frames.pkl
+  logs_dir: logs
+
+checkpoint_path: ${paths.checkpoint_dir}
+model_path: ${paths.latest_model}
 
 wandb:
   project: lewm

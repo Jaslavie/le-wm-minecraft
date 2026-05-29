@@ -1,11 +1,11 @@
-from planner import Planner
-from utils import get_cam_mean_std
+from lewm.planning.planner import Planner
+from lewm.data.utils import get_cam_mean_std
+from lewm.models.lewm import LeWM
+from lewm.paths import repo_path
 import pytest
 from hydra import initialize, compose
 import torch
 import stable_worldmodel as swm
-from pathlib import Path
-from lewm import LeWM
 
 @pytest.fixture(scope="module")
 def planner_config():
@@ -28,7 +28,7 @@ def lewm_config():
     with initialize(version_base=None, config_path="../config"):
         cfg = compose(config_name="lewm")
 
-        ckpt = Path("checkpoints/best_model.pt")
+        ckpt = repo_path(cfg.paths.best_model)
         lewm = LeWM(
             image_size=cfg.vit.image_size,
             patch_size=cfg.vit.patch_size,
@@ -55,7 +55,7 @@ def lewm_config():
 
 def test_planner_returns_valid_plan(planner_config, lewm_config):
     # load data and trained model
-    dataset = swm.data.HDF5Dataset("mineRL_training", cache_dir=".")
+    dataset = swm.data.HDF5Dataset("mineRL_training", cache_dir=str(repo_path("data")))
 
     # select test observation from dataset
     # we dont care about selecting an accurate target, just that the planner
@@ -65,7 +65,7 @@ def test_planner_returns_valid_plan(planner_config, lewm_config):
     obs_goal = pixels[-1].float().unsqueeze(0) / 255.0 # (B, T, 64, 64, 3)
     
     # get camera params
-    cam_mean, cam_std = get_cam_mean_std(dataset)
+    cam_mean, cam_std = get_cam_mean_std(str(repo_path("data/mineRL_training.h5")))
     
     # run planner
     mu, _ = planner_config.planner(lewm_config, obs, obs_goal, cam_mean, cam_std)

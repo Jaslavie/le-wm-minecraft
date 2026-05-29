@@ -1,13 +1,13 @@
 # test suite for ViT model
 import pytest
-import random
 import h5py
 import torch
 from hydra import compose, initialize
 from omegaconf import DictConfig
 
-from vit import tinyViT
-from predictor import Predictor
+from lewm.models.vit import tinyViT
+from lewm.models.predictor import Predictor
+from lewm.paths import repo_path
 
 #########
 # Initialize models with configurations
@@ -54,7 +54,8 @@ def test_batch_embeddings_distribution(vit):
     """test that the vision transformer outputs evenly distributed"""
     # model.eval()
 
-    with h5py.File("mineRL_training.h5", "r") as f:
+    dataset_h5 = repo_path("data/mineRL_training.h5")
+    with h5py.File(dataset_h5, "r") as f:
         # get pixels (observations). shape: (453496, 64, 64, 3)
         # get first 50 observations
         pixels = f['pixels'][0:50]
@@ -78,7 +79,8 @@ def test_predictor_output(predictor, vit):
     """test that the predictor outputs the correct next observation embedding"""
     # model.eval()
 
-    with h5py.File("mineRL_training.h5", "r") as f:
+    dataset_h5 = repo_path("data/mineRL_training.h5")
+    with h5py.File(dataset_h5, "r") as f:
         # test on 8 consecutive observations to match history length
         # include 1 extra representing the next observation to target for prediction
         pixels = f['pixels'][0:9]

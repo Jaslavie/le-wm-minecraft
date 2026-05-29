@@ -28,7 +28,7 @@ else:
         #     for frame in world_state.video_frames[-1]:
         #         frame_data.append(prepare_video_data(frame))
 
-        # with open("./video_frames.pkl", 'wb') as file:
+        # with open("./artifacts/fixtures/video_frames.pkl", 'wb') as file:
 #     print(type(frame_data))
 #     pickle.dump(frame_data, file)
 
