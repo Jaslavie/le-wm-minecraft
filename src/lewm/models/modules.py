@@ -9,6 +9,6 @@ class ActionEmbedder(nn.Module):
     """
     def __init__(self, action_dim, embedding_dim):
         super().__init__()
-        self.proj = nn.Linear(action_dim, embedding_dim)
+        self.embed = nn.Linear(action_dim, embedding_dim)
     def forward(self, input):
-        return self.proj(input.float())
+        return self.embed(input.float())

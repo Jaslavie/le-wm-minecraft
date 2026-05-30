@@ -36,7 +36,7 @@ class Planner:
         """
         # initialize mu and sigma for sampling distribution
         # warm start takes the most recent action sequence as context
-        mu = np.zeros((self.horizon, self.action_dim)) if warm_start is None else warm_start[-1]
+        mu = np.zeros((self.horizon, self.action_dim)) if warm_start is None else warm_start
         sigma = np.ones((self.horizon, self.action_dim))
 
         # send to gpu if available

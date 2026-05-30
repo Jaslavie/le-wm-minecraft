@@ -42,7 +42,7 @@ class PatchEmbedding(nn.Module):
             Flatten and transpose into final dimensionality
         """
         # create patch embedding
-        input_embed = self.to_patch_embed(input.float())
+        input_embed = self.to_patch_embed(input.float() / 255.0)
         # flatten and transpose into (batch_size, num_patches, embedding_dim)
         # for our case, this will be [1, 64, 1024]
         input_embed_ft = input_embed.flatten(2).transpose(1, 2)
@@ -60,9 +60,9 @@ class Transformer(nn.Module):
     """
     def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes):
         super().__init__()
-        self.layer_norm1 = nn.LayerNorm(embedding_dim)
-        self.layer_norm2 = nn.LayerNorm(embedding_dim)
-        self.attention_heads = nn.MultiheadAttention(embedding_dim, attention_heads, batch_first=True)
+        self.ln1 = nn.LayerNorm(embedding_dim)
+        self.ln2 = nn.LayerNorm(embedding_dim)
+        self.attn = nn.MultiheadAttention(embedding_dim, attention_heads, batch_first=True)
         self.mlp = nn.Sequential(
             nn.Linear(embedding_dim, mlp_hidden_nodes),
             nn.GELU(),
@@ -74,14 +74,14 @@ class Transformer(nn.Module):
         Residuals (skip connections) are used to pass along previous layers output
         """
         residual1 = input
-        input = self.layer_norm1(input)
+        input = self.ln1(input)
         # input is the key, query, and value in each parallel attention head
         # transformer output is stored in index 0
-        input = self.attention_heads(input, input, input)[0]
+        input = self.attn(input, input, input)[0]
         input = input + residual1
 
         residual2 = input
-        input = self.layer_norm2(input)
+        input = self.ln2(input)
         input = self.mlp(input)
         input = input + residual2
 
@@ -109,10 +109,10 @@ class tinyViT(nn.Module):
         )
         # randomize token and embedding vectors
         self.cls_token = nn.Parameter(torch.randn(1, 1, embedding_dim))
-        self.position_embedding = nn.Parameter(torch.randn(1, num_patches+1, embedding_dim))
+        self.pos_embedding = nn.Parameter(torch.randn(1, num_patches+1, embedding_dim))
         
         # stack 12 transformer layers
-        self.transformer_blocks = nn.Sequential(
+        self.blocks = nn.Sequential(
             *[Transformer(attention_heads, embedding_dim, mlp_hidden_nodes) 
                 for _ in range(transformer_blocks)]
         )
@@ -123,9 +123,9 @@ class tinyViT(nn.Module):
         #   batch norm allows model to see global distribution of images for SIGReg loss
         self.projection_head = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),
-            nn.BatchNorm1d(embedding_dim),
             nn.GELU(),
             nn.Linear(embedding_dim, embedding_dim),
+            nn.BatchNorm1d(embedding_dim),
         )
     def forward(self, input):
         curr_batch = input.size(0) # get the current batch size
@@ -134,10 +134,10 @@ class tinyViT(nn.Module):
         # add cls token and positional embedding
         cls_tokens = self.cls_token.expand(curr_batch, -1, -1)
         input = torch.cat((cls_tokens, input), dim = 1) # prepend at the start of input
-        input = input + self.position_embedding # add position embedding at the end
+        input = input + self.pos_embedding # add position embedding at the end
 
         # pass through 12 layers
-        input = self.transformer_blocks(input)
+        input = self.blocks(input)
 
         # extract cls token at index 0
         cls_out = input[:, 0]

@@ -16,13 +16,10 @@ class Transformer(nn.Module):
     def __init__(self, attention_heads, embedding_dim, mlp_hidden_nodes, dropout, history_len):
         super().__init__()
 
-        # create temporal mask over future observations (actions will be paired via adaln)
-        # the size of the matrix represents the sliding window of observations we attend to 
-        self.register_buffer('causal_mask', torch.triu(torch.ones(history_len, history_len), diagonal=1).bool())
-        self.attention_heads = nn.MultiheadAttention(embedding_dim, attention_heads, batch_first=True)
+        self.attn = nn.MultiheadAttention(embedding_dim, attention_heads, batch_first=True)
 
-        self.adaln1 = AdaLn(embedding_dim)
-        self.adaln2 = AdaLn(embedding_dim)
+        self.aln1 = AdaLn(embedding_dim)
+        self.aln2 = AdaLn(embedding_dim)
         
         self.mlp = nn.Sequential(
             nn.Linear(embedding_dim, mlp_hidden_nodes),
@@ -41,12 +38,12 @@ class Transformer(nn.Module):
         causal_mask = torch.triu(torch.ones(T, T, device=obs.device), diagonal=1).bool()
 
         residual1 = obs
-        obs = self.adaln1(obs, action) # condition embeddings on action
-        obs = self.attention_heads(obs, obs, obs, attn_mask=causal_mask)[0]
+        obs = self.aln1(obs, action) # condition embeddings on action
+        obs = self.attn(obs, obs, obs, attn_mask=causal_mask)[0]
         obs = obs + residual1
 
         residual2 = obs
-        obs = self.adaln2(obs, action)
+        obs = self.aln2(obs, action)
         obs = self.mlp(obs)
         obs = obs + residual2
 
@@ -62,7 +59,7 @@ class AdaLn(nn.Module):
     def __init__(self, embedding_dim):
         super().__init__()
         # only apply normalization on observations and don't learn parameters
-        self.layer_norm = nn.LayerNorm(embedding_dim, elementwise_affine=False)
+        self.ln = nn.LayerNorm(embedding_dim, elementwise_affine=False)
 
         # project previous actions into gamma, beta onto embedding
         # this makes both values derivable/optimizable during training 
@@ -72,7 +69,7 @@ class AdaLn(nn.Module):
         )
     def forward(self, obs_embedding, action_condition):
         # normalize observations
-        obs_n = self.layer_norm(obs_embedding)
+        obs_n = self.ln(obs_embedding)
 
         # compute shifts/scale of observations conditioned on actions
         # split output of network into 2 pieces
@@ -91,27 +88,27 @@ class Predictor(nn.Module):
     def __init__(self, embedding_dim, attention_heads, mlp_hidden_nodes, dropout, transformer_blocks, history_len):
         super().__init__()
         # 6 transformer layers
-        self.transformer_blocks = nn.Sequential(
-            *[Transformer(
+        self.blocks = nn.ModuleList([
+            Transformer(
                 attention_heads=attention_heads,
                 embedding_dim=embedding_dim,
                 mlp_hidden_nodes=mlp_hidden_nodes,
                 dropout=dropout,
                 history_len=history_len,
             )
-                for _ in range(transformer_blocks)]
-        )
+            for _ in range(transformer_blocks)
+        ])
         # a final projection head is applied after transformer blocks (same as encoder)
         # this allows the model to see the global distribution of embeddings for SIGReg loss
         self.projection_head = nn.Sequential(
             nn.Linear(embedding_dim, embedding_dim),
-            nn.BatchNorm1d(embedding_dim),
             nn.GELU(),
             nn.Linear(embedding_dim, embedding_dim),
+            nn.BatchNorm1d(embedding_dim),
         )
     def forward(self, obs, actions):
         # pass output of each transformer layer manually to the next layer
-        for block in self.transformer_blocks:
+        for block in self.blocks:
             obs = block(obs, actions)
 
         # apply projection per timestep; BatchNorm1d expects features in dim 1.

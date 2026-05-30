@@ -59,7 +59,7 @@ def test_batch_embeddings_distribution(vit):
         # get pixels (observations). shape: (453496, 64, 64, 3)
         # get first 50 observations
         pixels = f['pixels'][0:50]
-        pixels_t = torch.tensor(pixels).float() / 255
+        pixels_t = torch.tensor(pixels).float()
     
     # run through model
     with torch.no_grad():
@@ -84,7 +84,7 @@ def test_predictor_output(predictor, vit):
         # test on 8 consecutive observations to match history length
         # include 1 extra representing the next observation to target for prediction
         pixels = f['pixels'][0:9]
-        pixels_t = torch.tensor(pixels).float() / 255
+        pixels_t = torch.tensor(pixels).float()
         print("pixels_t shape", pixels_t.shape)
 
         # get corresponding actions for observations

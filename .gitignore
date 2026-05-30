@@ -36,3 +36,4 @@ outputs
 wandb
 logs/
 checkpoints/
+autoresearch_experiments/

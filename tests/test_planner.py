@@ -61,8 +61,8 @@ def test_planner_returns_valid_plan(planner_config, lewm_config):
     # we dont care about selecting an accurate target, just that the planner
     # can find a valid plan
     pixels = dataset[0]["pixels"] # (T, 64, 64, 3)
-    obs = pixels[0].float().unsqueeze(0) / 255.0 # (B, T, 64, 64, 3)
-    obs_goal = pixels[-1].float().unsqueeze(0) / 255.0 # (B, T, 64, 64, 3)
+    obs = pixels[0].float().unsqueeze(0)
+    obs_goal = pixels[-1].float().unsqueeze(0)
     
     # get camera params
     cam_mean, cam_std = get_cam_mean_std(str(repo_path("data/mineRL_training.h5")))
