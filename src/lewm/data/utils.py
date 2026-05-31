@@ -13,6 +13,7 @@ def normalize_camera(action_t, cam_mean, cam_std):
 
 def planner_output_to_actions(mu, cam_mean, cam_std, binary_threshold=0.5):
     """
+    DEPRECATED
     Convert planner output to Malmo action sequences
 
     planner output: [forward, left, back, right, jump, sneak, sprint, attack, pitch, yaw]

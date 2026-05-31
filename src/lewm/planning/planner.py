@@ -34,10 +34,18 @@ class Planner:
         Input: current observation and goal observation frame
         Outputs: (H, A) best action sequence found after max_iter
         """
-        # initialize mu and sigma for sampling distribution
-        # warm start takes the most recent action sequence as context
-        mu = np.zeros((self.horizon, self.action_dim)) if warm_start is None else warm_start
-        sigma = np.ones((self.horizon, self.action_dim))
+        # parameters are used for sampling distributions
+        if warm_start is None:
+            # initialize mu and sigma for camera sampling distribution
+            mu = np.zeros((self.horizon, 2))
+            sigma = np.ones((self.horizon, 2))
+            # initialize probability for binary actions sampling
+            p = np.ones((self.horizon, 8)) * 0.5
+        else:
+            mu = warm_start["mu"]
+            sigma = warm_start["sigma"]
+            p = warm_start["p"]
+        print(f"planner parameters: mu={mu.shape}, sigma={sigma.shape}, p={p.shape}")
 
         # send to gpu if available
         device = torch.device(
@@ -62,16 +70,18 @@ class Planner:
         best_z_pred_hist = None # store best prediction embedding
         best_score = None
         for cem_iter in range(self.max_iter):
-            # 1. Action sampling: sample 300 candidate action samples (n_samples)
-            #   each sample contains action sequences up to time horizon (H)
             print(
                 f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
                 f"rolling out {self.n_samples} samples (H={self.horizon})"
             )
+
+            # 1. Action sampling: sample 300 candidate action samples (n_samples)
+            #   each sample contains action sequences up to time horizon (H)
             samples = np.zeros((self.n_samples, self.horizon, self.action_dim))
-            samples[..., :8] = np.random.normal(mu[:, :8], sigma[:, :8], size=(self.n_samples, self.horizon, 8)) # binary actions
-            samples[..., :8] = (samples[..., :8] > 0.5).astype(np.float32) # binarize
-            samples[..., 8:] = np.random.normal(mu[:, 8:], sigma[:, 8:], size=(self.n_samples, self.horizon, 2)) # camera
+            # Bernoulli sampling for binary actions
+            samples[..., :8] = np.random.binomial(1, p=p, size=(self.n_samples, self.horizon, 8))
+            # Gaussian sampling for camera actions
+            samples[..., 8:] = np.random.normal(mu, sigma, size=(self.n_samples, self.horizon, 2)) 
 
             scores = []
             rollout_hists = []
@@ -117,12 +127,15 @@ class Planner:
                         f"{sample_idx + 1}/{self.n_samples} rollouts scored"
                     )
 
-            #  update distribution parameters based on elites
-            elite_idx = np.argsort(scores)[:self.n_elites] # top n_elites
+            #  update camera distribution parameters based on elites
+            elite_idx = np.argsort(scores)[:self.n_elites]
             elites = samples[elite_idx]
-
-            mu = elites.mean(axis=0)
-            sigma = elites.std(axis=0) + 1e-6
+            mu = elites[..., 8:].mean(axis=0)
+            sigma = elites[..., 8:].std(axis=0) + 1e-6
+            # update action probabilities based on elites
+            p = elites[..., :8].mean(axis=0)
+            
+            # get best elite score for metrics
             best_elite_idx = elite_idx[0]
             best_score = scores[best_elite_idx]
             best_z_pred_hist = rollout_hists[best_elite_idx]
@@ -130,18 +143,28 @@ class Planner:
 
         # 4. Action selection: return the mean of elites
         z_H = best_z_pred_hist[-1]
-        imagined_goal_mse = self.objective_function(z_H, zg).item()
+        final_goal_mse = self.objective_function(z_H, zg).item()
+        # imagined_latents = torch.cat(best_z_pred_hist[1:], dim=1).squeeze(0)
 
         planning_losses = {
-            "current_goal_mse": current_goal_mse,
+            "current_goal_mse": current_goal_mse, # current diff with goal
             "cem_best_cost": best_score,
-            "imagined_goal_mse": imagined_goal_mse,
+            "final_goal_mse": final_goal_mse, # final diff at H with goal
+            "current_latent": z1.detach(),
+            "goal_latent": zg.detach(),
+            # "imagined_latents": imagined_latents.detach(),
         }
-        print(
-            f"FINAL SCORE ======"
-            f"current_goal_mse={planning_losses['current_goal_mse']:.4f},"
-            f"cem_best_cost={planning_losses['cem_best_cost']:.4f}, "
-            f"imagined_goal_mse={planning_losses['imagined_goal_mse']:.4f}"
-        )
+        distribution_params = {
+            "mu": mu,
+            "sigma": sigma,
+            "p": p,
+        }
+        # print(
+        #     f"FINAL SCORE ======"
+        #     f"current_goal_mse={planning_losses['current_goal_mse']:.4f},"
+        #     f"cem_best_cost={planning_losses['cem_best_cost']:.4f}, "
+        #     f"final_goal_mse={planning_losses['final_goal_mse']:.4f}"
+        # )
         
-        return mu, planning_losses
+        # return best action sequence
+        return samples[best_elite_idx], planning_losses, distribution_params
