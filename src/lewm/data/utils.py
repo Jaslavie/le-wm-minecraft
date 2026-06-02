@@ -11,26 +11,28 @@ def normalize_camera(action_t, cam_mean, cam_std):
     action[..., 8:] = ((action[..., 8:] - cam_mean) / cam_std).float()
     return action
 
-def planner_output_to_actions(mu, cam_mean, cam_std, binary_threshold=0.5):
+def planner_output_to_actions(mu, cam_mean, cam_std):
     """
-    DEPRECATED
     Convert planner output to Malmo action sequences
 
     planner output: [forward, left, back, right, jump, sneak, sprint, attack, pitch, yaw]
-    - dims 0-7 needs to be binarized from means of elites to {0, 1}
-    - dims 8-9 needs to be denormalized from camera mean/std to raw degrees
+    - dims 0-7 are binary {0, 1}
+    - dims 8-9 are denormalized from camera mean/std to raw degrees
+    - Malmo expects camera commands as [turn/yaw, pitch]
     """
     actions = np.asarray(mu, dtype=np.float32).copy()
     if actions.ndim == 1:
         actions = actions.reshape(1, -1)
 
     # convert primary actions (0-7)
-    actions[:, :8] = (actions[:, :8] > binary_threshold).astype(np.float32)
+    # actions[:, :8] = (actions[:, :8] > binary_threshold).astype(np.float32)
 
     # convert camera (8-10)
     mean = cam_mean.detach().cpu().numpy() if torch.is_tensor(cam_mean) else np.asarray(cam_mean)
     std = cam_std.detach().cpu().numpy() if torch.is_tensor(cam_std) else np.asarray(cam_std)
-    actions[:, 8:] = actions[:, 8:] * std + mean
+    camera = actions[:, 8:] * std + mean
+    actions[:, 8] = camera[:, 1]  # turn/yaw
+    actions[:, 9] = camera[:, 0]  # pitch
 
     return [actions[0]] if actions.shape[0] == 1 else actions
 

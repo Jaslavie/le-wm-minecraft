@@ -2,7 +2,8 @@
 Wrapper for LeWM
 """
 import torch.nn as nn
-from lewm.models.vit import tinyViT
+# from lewm.models.vit import tinyViT
+from lewm.models.resnet import ResNet
 from lewm.models.predictor import Predictor
 from lewm.models.modules import ActionEmbedder
 
@@ -96,15 +97,18 @@ class LeWM(nn.Module):
     ):
         super().__init__()
         # 192 dim embedding of img
-        self.encoder =  tinyViT( 
-            image_size=image_size,
-            patch_size=patch_size,
+        # self.encoder =  tinyViT( 
+        #     image_size=image_size,
+        #     patch_size=patch_size,
+        #     embedding_dim=embedding_dim,
+        #     num_channels=num_channels,
+        #     num_patches=num_patches,
+        #     attention_heads=vit_attention_heads,
+        #     mlp_hidden_nodes=vit_mlp_hidden_nodes,
+        #     transformer_blocks=vit_transformer_blocks,
+        # )
+        self.encoder = ResNet(
             embedding_dim=embedding_dim,
-            num_channels=num_channels,
-            num_patches=num_patches,
-            attention_heads=vit_attention_heads,
-            mlp_hidden_nodes=vit_mlp_hidden_nodes,
-            transformer_blocks=vit_transformer_blocks,
         )
         self.predictor = Predictor(
             embedding_dim=embedding_dim,

@@ -94,7 +94,7 @@ def train_model(cfg: DictConfig):
         history_len=cfg.predictor.history_len,
         num_proj=cfg.sigreg.num_proj,
         factor=cfg.sigreg.factor,
-        phi=cfg.sigreg.phi
+        phi=cfg.sigreg.phi,
     ).to(device)
 
     # optimization with warmup and cosine annealing 

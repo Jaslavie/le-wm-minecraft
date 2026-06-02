@@ -12,7 +12,7 @@ paths:
   fixtures_dir: artifacts/fixtures
   goal_frame: artifacts/fixtures/goal_frame.pkl
   video_frames: artifacts/fixtures/video_frames.pkl
-  logs_dir: logs
+  logs_dir: artifacts/charts
 
 checkpoint_path: ${paths.checkpoint_dir}
 model_path: ${paths.latest_model}
@@ -24,7 +24,7 @@ wandb:
 # == Shared ==
 action_dim: 10
 batch_size: 128
-total_epochs: 10
+total_epochs: 5
 warmup_epochs: 1
 sub_trajectory: 8 # 8 frames and 8 actions
 
@@ -63,3 +63,4 @@ planner:
   n_samples: 300
   n_elites: 30
   planning_horizon: 8
+  max_steps: 60 # slightly more than og 50

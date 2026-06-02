@@ -46,7 +46,7 @@ def lewm_config():
             history_len=cfg.predictor.history_len,
             num_proj=cfg.sigreg.num_proj,
             factor=cfg.sigreg.factor,
-            phi=cfg.sigreg.phi
+            phi=cfg.sigreg.phi,
         )
         lewm.load_state_dict(torch.load(ckpt)["model_state_dict"])
         lewm.eval()
