@@ -44,6 +44,9 @@ class Planner:
             mu = warm_start["mu"]
             sigma = warm_start["sigma"]
             p = warm_start["p"]
+        # disable camera control
+        mu[:] = 0.0
+        sigma[:] = 0.0
         print(f"planner parameters: mu={mu.shape}, sigma={sigma.shape}, p={p.shape}")
 
         # send to gpu if available
@@ -78,7 +81,8 @@ class Planner:
             # Bernoulli sampling for binary actions
             samples[..., :8] = np.random.binomial(1, p=p, size=(self.n_samples, self.horizon, 8))
             # Gaussian sampling for camera actions
-            samples[..., 8:] = np.random.normal(mu, sigma, size=(self.n_samples, self.horizon, 2)) 
+            # samples[..., 8:] = np.random.normal(mu, sigma, size=(self.n_samples, self.horizon, 2))
+            samples[..., 8:] = 0.0
 
             scores = []
             rollout_hists = []

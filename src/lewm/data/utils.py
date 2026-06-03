@@ -28,11 +28,12 @@ def planner_output_to_actions(mu, cam_mean, cam_std):
     # actions[:, :8] = (actions[:, :8] > binary_threshold).astype(np.float32)
 
     # convert camera (8-10)
-    mean = cam_mean.detach().cpu().numpy() if torch.is_tensor(cam_mean) else np.asarray(cam_mean)
-    std = cam_std.detach().cpu().numpy() if torch.is_tensor(cam_std) else np.asarray(cam_std)
-    camera = actions[:, 8:] * std + mean
-    actions[:, 8] = camera[:, 1]  # turn/yaw
-    actions[:, 9] = camera[:, 0]  # pitch
+    # mean = cam_mean.detach().cpu().numpy() if torch.is_tensor(cam_mean) else np.asarray(cam_mean)
+    # std = cam_std.detach().cpu().numpy() if torch.is_tensor(cam_std) else np.asarray(cam_std)
+    # camera = actions[:, 8:] * std + mean
+    # actions[:, 8] = camera[:, 1]  # turn/yaw
+    # actions[:, 9] = camera[:, 0]  # pitch
+    actions[:, 8:10] = 0.0 # disable camera control
 
     return [actions[0]] if actions.shape[0] == 1 else actions
 

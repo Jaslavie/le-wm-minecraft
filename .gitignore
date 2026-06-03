@@ -24,16 +24,15 @@ run
 .idea
 text
 wandb
+.DS_Store
 
 # training data
 mineRL_training.h5
 data/mineRL_training.h5
-
-# generated artifacts
-artifacts/
 
 outputs
 wandb
 logs/
 checkpoints/
 autoresearch_experiments/
+artifacts/final_models/*.pt
