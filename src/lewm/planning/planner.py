@@ -77,9 +77,8 @@ class Planner:
             samples = np.zeros((self.n_samples, self.horizon, self.action_dim))
             # Bernoulli sampling for binary actions
             samples[..., :8] = np.random.binomial(1, p=p, size=(self.n_samples, self.horizon, 8))
-            samples[..., [1, 3]] = 0.0
             # Gaussian sampling for camera actions
-            samples[..., 8:] = np.random.normal(mu, sigma, size=(self.n_samples, self.horizon, 2))
+            samples[..., 8:] = np.random.normal(mu, sigma, size=(self.n_samples, self.horizon, 2)) 
 
             scores = []
             rollout_hists = []

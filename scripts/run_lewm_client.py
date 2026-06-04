@@ -148,6 +148,8 @@ def run_inference(
     distance_by_step = []
     # initialize warm start for first plan
     last_distribution_params = None
+    # Neutral action so Malmo does not keep moving during long CEM replans.
+    stop_action = np.zeros(cfg.action_dim, dtype=np.float64)
 
     # Connect to server socket
     print("Establishing connection...", end="")
@@ -216,29 +218,17 @@ def run_inference(
             # update warm start for next plan
             last_distribution_params = distribution_params
 
+            # build action queue after CEM planning runs
             action_queue = list(planner_output_to_actions(action_sequence, cam_mean, cam_std))
-            
+            # append stop action to queue to prevent movement during long replans
+            action_queue.append(stop_action.copy()) # 
+
             print(f"finished planning: action_sequence={action_sequence.shape}, queue={len(action_queue)}")
         else:
-            # Plan when action queue is not empty
-            goal_latent = planning_losses["goal_latent"]
-            with torch.no_grad():
-                lewm_model.eval()
-                z1 = lewm_model.encoder(obs.to(goal_latent.device))
-            current_goal_mse = planner.objective_function(z1, goal_latent).item()
-
-        if current_goal_mse <= cfg.planner.success_threshold:
-            print(f"reached goal {goal_name} (mse={current_goal_mse:.4f})")
-            success_threshold_met = True
-
-        if success_threshold_met:
-            continue
+            current_goal_mse = planning_losses["current_goal_mse"]
 
         # Execute first action
         action_to_take = action_queue.pop(0)
-        action_to_take[[1, 3]] = 0.0 # TODO: currently disabling left/right movement
-        if goal_state != "chopping": # TODO: currently disabling attack for navigation
-            action_to_take[7] = 0.0
         print(f"Current action: {action_to_take} ({len(action_queue)} left in plan)")
 
         # Collect metrics
