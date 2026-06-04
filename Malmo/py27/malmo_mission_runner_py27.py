@@ -123,7 +123,7 @@ try:
                 }
             print(physics)
 
-            # Send frame and physics to client.
+            # Send frame and physics to client and wait for action.
             frame = prepare_video_data(world_state.video_frames[-1])
             action = get_LeWM_action(frame, physics, connection, setting)
             action_list = process_LeWM_action(action, setting)

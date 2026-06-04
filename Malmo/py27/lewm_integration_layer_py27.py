@@ -9,10 +9,14 @@ from __future__ import print_function
 
 import select
 import pickle
+import struct
 
-def get_LeWM_action(frame, connection, setting):
+def get_LeWM_action(frame, stats, connection, setting):
     # [ forward, left, back, right, jump, sneak, sprint, attack, camera, camera ]
     connection.sendall(frame)
+    stats_bytes = pickle.dumps(stats, protocol=2)
+    connection.sendall(struct.pack(">I", len(stats_bytes)))
+    connection.sendall(stats_bytes)
 
     data = b""
     while not data:

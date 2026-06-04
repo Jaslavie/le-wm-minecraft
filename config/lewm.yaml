@@ -60,11 +60,11 @@ optimizer:
 # == Planner hyperparameters ==
 planner:
   max_iter: 10
-  n_samples: 100
-  n_elites: 10
+  n_samples: 300
+  n_elites: 30
   planning_horizon: 8
-  max_steps: 100
-  success_threshold: .006 # success threshold for each goal
+  max_steps: 80
+  success_threshold: 0.5 # success threshold for each goal
   success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
 
 # == Malmo env/task settings ==
