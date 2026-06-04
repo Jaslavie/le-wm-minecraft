@@ -60,7 +60,25 @@ optimizer:
 # == Planner hyperparameters ==
 planner:
   max_iter: 10
-  n_samples: 300
-  n_elites: 30
+  n_samples: 100
+  n_elites: 10
   planning_horizon: 8
-  max_steps: 60 # slightly more than og 50
+  max_steps: 100
+  success_threshold: .006 # success threshold for each goal
+  success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
+
+# == Malmo env/task settings ==
+env:
+  configs:
+    discrimination_test:
+      xml: Malmo/py27/environments/discrimination_test.xml
+      target_name: oak_tree
+      target_position: [-6.0, 15.0]
+      navigation_goal_image: artifacts/fixtures/goal_frame.pkl
+      chopping_goal_image: null
+    single_tree_navigation:
+      xml: Malmo/py27/environments/single_tree_navigation.xml
+      target_name: oak_tree
+      target_position: [0.0, 15.0]
+      navigation_goal_image: artifacts/fixtures/goal_frame.pkl
+      chopping_goal_image: null

@@ -15,7 +15,7 @@ ENV/
 build/
 dist/
 *.egg-info/
-Malmo/*
+# Malmo/*
 !Malmo/LeWM_Files/
 Malmo/LeWM_Files/*
 !Malmo/LeWM_Files/malmo_mission_runner.py

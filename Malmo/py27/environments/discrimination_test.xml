@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <About>
+    <Summary>Discrimination test: oak tree left, cactus middle, diamond block right. Attack disabled at the action layer; success is real distance-to-oak-target.</Summary>
+  </About>
+
+  <ServerSection>
+    <ServerInitialConditions>
+      <Time>
+        <StartTime>1000</StartTime>
+        <AllowPassageOfTime>false</AllowPassageOfTime>
+      </Time>
+      <Weather>clear</Weather>
+    </ServerInitialConditions>
+
+    <ServerHandlers>
+      <!-- Superflat keeps the ground perfectly level so the agent cannot fall or spawn mid-air. -->
+      <FlatWorldGenerator generatorString="3;7,2x3,2;1;" forceReset="true"/>
+      <DrawingDecorator>
+        <!-- Left target: oak tree at (x=-6, z=15). -->
+        <DrawCuboid x1="-6" y1="4" z1="15" x2="-6" y2="8" z2="15" type="log" variant="oak"/>
+        <DrawCuboid x1="-8" y1="9" z1="13" x2="-4" y2="10" z2="17" type="leaves" variant="oak"/>
+        <DrawCuboid x1="-7" y1="11" z1="14" x2="-5" y2="11" z2="16" type="leaves" variant="oak"/>
+
+        <!-- Middle distractor: cactus at (x=0, z=15). Sand base keeps the cactus valid. -->
+        <DrawBlock x="0" y="3" z="15" type="sand"/>
+        <DrawCuboid x1="0" y1="4" z1="15" x2="0" y2="7" z2="15" type="cactus"/>
+
+        <!-- Right target: diamond block marker at (x=6, z=15). -->
+        <DrawCuboid x1="5" y1="4" z1="15" x2="7" y2="6" z2="15" type="diamond_block"/>
+      </DrawingDecorator>
+      <ServerQuitWhenAnyAgentFinishes/>
+    </ServerHandlers>
+  </ServerSection>
+
+  <AgentSection mode="Survival">
+    <Name>TreeBot</Name>
+    <AgentStart>
+      <!-- Fixed spawn at origin facing +Z (yaw=0), level pitch, so the cactus is centered ahead at start. -->
+      <Placement x="0.5" y="4.0" z="0.5" yaw="0" pitch="0"/>
+    </AgentStart>
+    <AgentHandlers>
+      <VideoProducer want_depth="false">
+        <Width>64</Width>
+        <Height>64</Height>
+      </VideoProducer>
+      <ObservationFromFullStats/>
+      <ContinuousMovementCommands turnSpeedDegs="180"/>
+    </AgentHandlers>
+  </AgentSection>
+
+</Mission>
