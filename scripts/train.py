@@ -1,3 +1,6 @@
+import os,sys
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.join(repo_root, "src"))
 from lewm.data.utils import normalize_columns
 from lewm.models.lewm import LeWM, compute_loss
 from lewm.paths import repo_path
