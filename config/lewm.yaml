@@ -34,6 +34,9 @@ sigreg:
   phi: 0.606 # frequency of normal dist. for epps pulley test
   lambd: 0.1
 
+inverse_dynamics:
+  lambd: 0.5
+
 # == ViT encoder hyperparameters ==
 vit:
   image_size: 64
@@ -62,6 +65,7 @@ planner:
   max_iter: 10
   n_samples: 300
   n_elites: 30
+  rollout_batch_size: 64
   planning_horizon: 8
   max_steps: 80
   success_threshold: 0.5 # success threshold for each goal
