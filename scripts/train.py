@@ -32,11 +32,17 @@ def train_model(cfg: DictConfig):
         dir=str(repo_path(cfg.paths.logs_dir, "wandb_runs")),
     )
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "mps")
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     print(f"using device {device}")
 
     # load and normalize original dataset
-    ds = swm.data.HDF5Dataset("mineRL_training", cache_dir=str(data_dir))
+    dataset_path = repo_path(cfg.paths.dataset_h5)
+    ds = swm.data.HDF5Dataset(path=str(dataset_path))
 
     normalizer = normalize_columns(
         ds,
@@ -45,8 +51,7 @@ def train_model(cfg: DictConfig):
     )
 
     dataset = swm.data.HDF5Dataset(
-        "mineRL_training",
-        cache_dir=str(data_dir),
+        path=str(dataset_path),
         num_steps=cfg.sub_trajectory, # batch every 4 timestamps
         transform=normalizer,
     )
