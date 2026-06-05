@@ -6,15 +6,17 @@ import wandb
 import numpy as np
 from PIL import Image
 import matplotlib
-matplotlib.use("TkAgg")
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import torch.nn.functional as F
 from torchvision import transforms
 from omegaconf import DictConfig, OmegaConf
 
 from lewm.models.lewm import LeWM
 from lewm.planning.planner import Planner
-from lewm.data.utils import get_cam_mean_std, planner_output_to_actions
+from lewm.data.utils import get_cam_mean_std
 from lewm.paths import repo_path
+from lewm.data.utils import planner_output_to_actions
 
 def bytes_to_image(frame):
     image = np.frombuffer(frame, dtype=np.uint8)
@@ -24,8 +26,6 @@ def bytes_to_image(frame):
     return image
 
 def load_trained_lewm(cfg: DictConfig, checkpoint):
-    weights = checkpoint["model_state_dict"]
-
     lewm_model = LeWM(
         image_size=cfg.vit.image_size,
         patch_size=cfg.vit.patch_size,
@@ -43,9 +43,9 @@ def load_trained_lewm(cfg: DictConfig, checkpoint):
         history_len=cfg.predictor.history_len,
         num_proj=cfg.sigreg.num_proj,
         factor=cfg.sigreg.factor,
-        phi=cfg.sigreg.phi
+        phi=cfg.sigreg.phi,
     )
-    lewm_model.load_state_dict(weights)
+    lewm_model.load_state_dict(checkpoint["model_state_dict"])
     lewm_model.eval()
 
     return lewm_model
@@ -53,7 +53,7 @@ def load_trained_lewm(cfg: DictConfig, checkpoint):
 def process_frame_pixels(transform, frame):
     """resizes raw malmo frame to 64x64"""
 
-    img_t = transform(bytes_to_image(frame)).unsqueeze(0) # (1, 3, 64, 64)
+    img_t = transform(bytes_to_image(frame)).unsqueeze(0) * 255.0 # (1, 3, 64, 64)
 
     return img_t
 
@@ -67,13 +67,13 @@ def recvall(sock, nbytes):
         data += chunk
     return data
 
-def main():
+def run_inference(model_path: str, use_wandb: bool = True):
     cfg = OmegaConf.load(repo_path("config", "lewm.yaml"))
-    checkpoint = torch.load(repo_path(cfg.paths.best_model), map_location="cpu")
-    goal_file = repo_path(cfg.paths.goal_frame)
+    checkpoint = torch.load(model_path, map_location="cpu") # Allow model selection for evals
+    goal_file = repo_path("artifacts", "fixtures", "goal_frame.pkl")
     cam_mean, cam_std = get_cam_mean_std(str(repo_path(cfg.paths.dataset_h5)))
     transform = transforms.Compose([
-        transforms.Resize((64, 64)),
+        transforms.Resize((cfg.vit.image_size, cfg.vit.image_size)),
         transforms.ToTensor(),
     ])
 
@@ -96,23 +96,28 @@ def main():
 
     logs_dir = repo_path(cfg.paths.logs_dir)
     logs_dir.mkdir(parents=True, exist_ok=True)
+    if use_wandb:
+        wandb.init(
+            project=cfg.wandb.project,
+            job_type="planning",
+            config=OmegaConf.to_container(cfg, resolve=False),
+            dir=str(logs_dir / "wandb_runs"),
+        )
+        wandb.define_metric("planning/step")
+        wandb.define_metric("planning/*", step_metric="planning/step")
+        wandb.define_metric("control/*", step_metric="planning/step")
 
-    wandb.init(
-        project=cfg.wandb.project,
-        job_type="planning",
-        config=OmegaConf.to_container(cfg, resolve=False),
-        dir=str(logs_dir / "wandb_runs"),
-    )
-    wandb.define_metric("planning/step")
-    wandb.define_metric("planning/*", step_metric="planning/step")
-
+    # initialize planning parameters
     step = 0
     cycle_times = []
-    current_goal_mses = []
-    cem_best_costs = []
     action_queue = []
     planning_losses = None
     frames = []
+    metric_steps = []
+    latent_goal_mses = []
+    pixel_goal_mses = []
+    # initialize warm start for first plan
+    last_distribution_params = None
 
     # Connect to server socket
     print("Establishing connection...", end="")
@@ -122,7 +127,7 @@ def main():
 
     # Begin loop
     done = False
-    while not done:
+    while not done or step < cfg.planner.max_steps:
         start = time.perf_counter()
         # Receive frame
         frame = recvall(client, 64 * 64 * 3)
@@ -140,26 +145,37 @@ def main():
         print(f"finished processing: obs={obs.shape}, goal_obs={goal_obs.shape}")
 
         # Plan when action queue is empty
-        last_mu = None
         if not action_queue:
             warm_start = None
             
-            # Set warm start
-            # shifts previous plan one step forward (drops first actions, which we
-            # assume has been taken at this point)
-            if last_mu is not None:
-                warm_start = np.concatenate([last_mu[1:], last_mu[-1:]], axis=0)
+            # Set warm start by shifting the previous sampling distributions forward.
+            if last_distribution_params is not None:
+                warm_start = {
+                    "mu": np.concatenate(
+                        [last_distribution_params["mu"][1:], last_distribution_params["mu"][-1:]],
+                        axis=0,
+                    ),
+                    "sigma": np.concatenate(
+                        [last_distribution_params["sigma"][1:], last_distribution_params["sigma"][-1:]],
+                        axis=0,
+                    ),
+                    "p": np.concatenate(
+                        [last_distribution_params["p"][1:], last_distribution_params["p"][-1:]],
+                        axis=0,
+                    ),
+                }
             
             # Planner embeds obs with vit in its pipeline
-            mu, planning_losses = planner.planner(
+            action_sequence, planning_losses, distribution_params = planner.planner(
                 lewm_model, obs, goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start=warm_start
             )
-            last_mu = mu
-            action_queue = list(planner_output_to_actions(mu, cam_mean, cam_std))
+            malmo_actions = planner_output_to_actions(action_sequence, cam_mean, cam_std)
+            # update warm start for next plan
+            last_distribution_params = distribution_params
+
+            action_queue = list(malmo_actions)
             
-            current_goal_mses.append(planning_losses["current_goal_mse"])
-            cem_best_costs.append(planning_losses["cem_best_cost"])
-            print(f"finished planning: mu={mu.shape}, queue={len(action_queue)}")
+            print(f"finished planning: action_sequence={action_sequence.shape}, queue={len(action_queue)}")
 
         # Execute first action
         action_to_take = action_queue.pop(0)
@@ -177,37 +193,80 @@ def main():
         video_array = np.array(frames, dtype=np.uint8)
         video_array = np.transpose(video_array, (0, 3, 1, 2))
         
-        # W&B
-        wandb.log({
-            "planning/step": step,
-            "planning/current_goal_mse": planning_losses["current_goal_mse"],
-            "planning/cem_best_cost": planning_losses["cem_best_cost"],
-            "planning/imagined_goal_mse": planning_losses["imagined_goal_mse"],
-            "planning/cycle_time": cycle_time,
-            "planning/avg_cycle_time": avg_cycle_time,
-            "planning/rollout_video": wandb.Video(
-                video_array, format="mp4", caption=f"step {step}"
-            ),
-        })
+        # Compute pixel goal MSE for logging
+        pixel_goal_mse = F.mse_loss(obs.float() / 255.0, goal_obs.float() / 255.0).item()
 
-        fig, (ax1, ax2) = plt.subplots(1, 2)
-        ax1.plot(current_goal_mses, label="current_goal_mse")
-        ax1.plot(cem_best_costs, label="cem_best_cost")
-        ax1.legend()
-        ax2.plot(cycle_times, label="cycle")
-        ax2.plot([sum(cycle_times[:i]) / i for i in range(1, len(cycle_times) + 1)], label="avg")
-        ax2.legend()
-        wandb.log({"planning/dashboard": wandb.Image(fig)})
-        plt.close(fig)
+        # W&B logs
+        #   objective latent distance: how close the real observation is to the goal in latent space
+        #   dreaming gap: how close the imagined next latent is to the next real latent
+        #   task success pixel mse: did the agent reach the goal in pixel space?
+        if use_wandb:
+            metrics = {
+                "planning/step": step,
+                "control/task_success_latent_mse": planning_losses["current_goal_mse"],
+                "control/task_success_pixel_mse": pixel_goal_mse,
+                
+                "planning/cycle_time": cycle_time, # time to plan and execute action
+                "planning/avg_cycle_time": avg_cycle_time,
+                # Videos
+                "planning/rollout_video": wandb.Video(
+                    video_array, format="mp4", caption=f"step {step}"
+                ),
+                "planning/frame": wandb.Image(
+                    frame_np, caption=f"step {step}"
+                )
+            }
 
-        wandb.log({"planning/frame": wandb.Image(frame_np, caption=f"step {step}")})
+            # Plot actual distance to goal vs imagined distance
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+            ax1.plot(pixel_goal_mse, label="Actual pixel distance to goal")
+            ax1.plot(planning_losses["current_goal_mse"], label="Latent distance to goal")
+            ax1.legend()
+            ax2.plot(cycle_times, label="cycle")
+            ax2.plot([sum(cycle_times[:i]) / i for i in range(1, len(cycle_times) + 1)], label="avg")
+            ax2.legend()
+            metrics["planning/dashboard"] = wandb.Image(fig)
+            wandb.log(metrics, step=step)
+            plt.close(fig)
+        else:
+            # Collect metrics for plotting
+            metric_steps.append(step)
+            latent_goal_mses.append(planning_losses["current_goal_mse"])
+            pixel_goal_mses.append(pixel_goal_mse)
 
         # Send actions to Malmo to perform
         client.sendall(pickle.dumps(action_to_take.tolist()))
 
     client.close()
 
-    wandb.finish()
+    # Close wandb or upload metrics
+    if use_wandb:
+        wandb.finish()
+        return None
+    else:
+        # Return MSE and other graphs in a single image
+        output_path = logs_dir / f"{model_path.stem}_mse_dashboard.png"
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 4))
+        ax1.plot(metric_steps, pixel_goal_mses, marker="o", label="Pixel MSE to goal")
+        ax1.plot(metric_steps, latent_goal_mses, marker="x", label="Latent MSE to goal")
+        ax1.set_xlabel("Planning step")
+        ax1.set_ylabel("MSE")
+        ax1.set_title("Distance to goal")
+        ax1.legend()
+        avg_cycle_times = [
+            sum(cycle_times[:i]) / i for i in range(1, len(cycle_times) + 1)
+        ]
+        ax2.plot(metric_steps, cycle_times, marker="o", label="Cycle time")
+        ax2.plot(metric_steps, avg_cycle_times, label="Average cycle time")
+        ax2.set_xlabel("Planning step")
+        ax2.set_ylabel("Seconds")
+        ax2.set_title("Planning runtime")
+        ax2.legend()
+        fig.tight_layout()
+        fig.savefig(output_path)
+        plt.close(fig)
+        return str(output_path)
 
 if __name__ == "__main__":
-    main()
+    # Default to latest checkpoint
+    run_inference(model_path=repo_path("artifacts", "checkpoints", "epoch_004.pt"), use_wandb=True)

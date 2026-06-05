@@ -40,7 +40,6 @@ def draw_tree(x, y, z, r):
     leaf_br = r # Leaf base radius
     leaf_base_y = y + 2
     leaf_base_height = 2
-
     # Upper leaf config
     leaf_ur = 1 # Leaf upper radius
     leaf_upper_y = leaf_base_y + leaf_base_height
@@ -76,6 +75,7 @@ def draw_tree(x, y, z, r):
 def draw_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4, random=True, border = False):
     gen = ""
     tree_radius=2
+    tree_height=4
 
     # Clear original trees (SUPERFLAT ONLY)
     gen += (f'<DrawCuboid x1="{xmin-10}" y1="{ground_y}" z1="{zmin-10}" '
@@ -86,9 +86,9 @@ def draw_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4, random=True, borde
     # If configured, add border to restrict environment
     if border:
         gen += (f'<DrawCuboid x1="{xmin-tree_radius-1}" y1="{ground_y}" z1="{zmin-tree_radius-1}" '
-                        f'x2="{xmax+tree_radius+1}" y2="{ground_y+4}" z2="{zmax+tree_radius+1}" type="barrier"/>\n')
+                        f'x2="{xmax+tree_radius+1}" y2="{ground_y+tree_height}" z2="{zmax+tree_radius+1}" type="barrier"/>\n')
         gen += (f'<DrawCuboid x1="{xmin-tree_radius}" y1="{ground_y}" z1="{zmin-tree_radius}" '
-                        f'x2="{xmax+tree_radius}" y2="{ground_y+4}" z2="{zmax+tree_radius}" type="air"/>\n')
+                        f'x2="{xmax+tree_radius}" y2="{ground_y+tree_height}" z2="{zmax+tree_radius}" type="air"/>\n')
 
     if random:
         for _ in range(num_trees):

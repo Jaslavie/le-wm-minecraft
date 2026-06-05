@@ -46,7 +46,7 @@ python -m pytest
 
 Note: `test_planner.py` requires `artifacts/checkpoints/best_model.pt` to exist.
 
-## Project structure
+### Project structure
 
 ```
 le-wm-minecraft/
@@ -63,29 +63,6 @@ le-wm-minecraft/
 │   ├── checkpoints/       # best_model.pt, epoch_*.pt
 │   └── fixtures/          # goal_frame.pkl, video_frames.pkl
 └── Malmo/LeWM_Files/      # Malmo server integration (Python 3.5)
-```
-
-After `pip install -e .`, import from the `lewm` package:
-
-```python
-from lewm import LeWM, Planner, compute_loss
-from lewm.models.vit import tinyViT
-from lewm.models.predictor import Predictor
-from lewm.data.utils import normalize_columns, get_cam_mean_std
-from lewm.paths import repo_path
-
-# resolve paths from repo root (works regardless of cwd)
-cfg_path = repo_path("config", "lewm.yaml")
-checkpoint = repo_path("artifacts/checkpoints/best_model.pt")
-dataset_h5 = repo_path("data/mineRL_training.h5")
-goal_frame = repo_path("artifacts/fixtures/goal_frame.pkl")
-```
-
-Scripts and notebooks use the same imports. Run scripts from the repo root:
-
-```bash
-python scripts/train.py
-python scripts/run_lewm_client.py
 ```
 
 ### Running Malmo

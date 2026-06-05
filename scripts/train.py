@@ -56,7 +56,8 @@ def train_model(cfg: DictConfig):
         transform=normalizer,
     )
 
-    randomizer = torch.Generator().manual_seed(42)
+    train_randomizer = torch.Generator().manual_seed(42)
+    val_randomizer = torch.Generator().manual_seed(43)
 
     # split training data by samples
     num_episodes = len(dataset.lengths)
@@ -74,8 +75,12 @@ def train_model(cfg: DictConfig):
     train_dataset = Subset(dataset, train_indices)
     val_dataset = Subset(dataset, val_indices)
     
-    train = DataLoader(train_dataset, cfg.batch_size, shuffle=True, drop_last=True, generator=randomizer)
-    val = DataLoader(val_dataset, cfg.batch_size, shuffle=False, drop_last=True)
+    train = DataLoader(
+        train_dataset, cfg.batch_size, shuffle=True, drop_last=True, generator=train_randomizer
+    )
+    val = DataLoader(
+        val_dataset, cfg.batch_size, shuffle=True, drop_last=True, generator=val_randomizer
+    )
 
     print(f"training size: {train_size}, validation size: {num_episodes - train_size}")
 
@@ -97,7 +102,7 @@ def train_model(cfg: DictConfig):
         history_len=cfg.predictor.history_len,
         num_proj=cfg.sigreg.num_proj,
         factor=cfg.sigreg.factor,
-        phi=cfg.sigreg.phi
+        phi=cfg.sigreg.phi,
     ).to(device)
 
     # optimization with warmup and cosine annealing 
@@ -111,9 +116,9 @@ def train_model(cfg: DictConfig):
     model_path = repo_path(cfg.paths.latest_model)
     model_path.parent.mkdir(parents=True, exist_ok=True)
     best_model_path = repo_path(cfg.paths.best_model)
-    best_val_loss = float("inf")
-    train_epoch_losses = []
-    val_epoch_losses = []
+    best_val_pred_loss = float("inf")
+    train_epoch_pred_losses = []
+    val_epoch_pred_losses = []
 
     # run training over epochs
     for epoch in range(cfg.total_epochs):
@@ -125,6 +130,7 @@ def train_model(cfg: DictConfig):
         validation_sigreg_loss = 0
 
         # training
+        lewm.train()
         for i, data in enumerate(train):
             # each data sample contains actions and pictures
             action = data["action"].to(device)
@@ -166,8 +172,8 @@ def train_model(cfg: DictConfig):
 
         # increment scheduler per epoch
         scheduler.step()
-
         # validation
+        lewm.eval()
         with torch.no_grad():
             for i, data in enumerate(val):
                 action = data["action"].to(device)
@@ -191,22 +197,24 @@ def train_model(cfg: DictConfig):
         avg_val_pred_loss = validation_pred_loss / len(val)
         avg_val_sigreg_loss = validation_sigreg_loss / len(val)
 
-        train_epoch_losses.append(avg_train_loss)
-        val_epoch_losses.append(avg_val_loss)
+        train_epoch_pred_losses.append(avg_train_pred_loss)
+        val_epoch_pred_losses.append(avg_val_pred_loss)
 
         checkpoint_payload = {
             "epoch": epoch,
             "model_state_dict": lewm.state_dict(),
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss,
+            "train_pred_loss": avg_train_pred_loss,
+            "val_pred_loss": avg_val_pred_loss,
         }
 
         # save latest model weights
         torch.save(checkpoint_payload, model_path)
 
-        # save best model
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
+        # save best model by prediction loss
+        if avg_val_pred_loss < best_val_pred_loss:
+            best_val_pred_loss = avg_val_pred_loss
             torch.save(checkpoint_payload, best_model_path)
 
         # collect checkpoints at the end of each epoch
@@ -217,6 +225,8 @@ def train_model(cfg: DictConfig):
             "scheduler_state_dict": scheduler.state_dict(),
             "train_loss": avg_train_loss,
             "val_loss": avg_val_loss,
+            "train_pred_loss": avg_train_pred_loss,
+            "val_pred_loss": avg_val_pred_loss,
         }, checkpoint_dir / f"epoch_{epoch:03d}.pt")
 
         # log epoch metrics to wandb
@@ -233,17 +243,17 @@ def train_model(cfg: DictConfig):
             "epoch": epoch,
         })
 
-        epochs = list(range(len(train_epoch_losses)))
+        epochs = list(range(len(train_epoch_pred_losses)))
         fig, ax = plt.subplots()
-        ax.plot(epochs, train_epoch_losses, marker="o", label="train")
-        ax.plot(epochs, val_epoch_losses, marker="o", label="val")
+        ax.plot(epochs, train_epoch_pred_losses, marker="o", label="train")
+        ax.plot(epochs, val_epoch_pred_losses, marker="o", label="val")
         ax.set_xlabel("epoch")
-        ax.set_ylabel("loss")
-        ax.set_title("Train vs validation loss")
+        ax.set_ylabel("pred loss")
+        ax.set_title("Train vs validation prediction loss")
         ax.legend()
         ax.grid(True, alpha=0.3)
         fig.tight_layout()
-        wandb.log({"train_val/epoch_loss": wandb.Image(fig), "epoch": epoch})
+        wandb.log({"train_val/epoch_pred_loss": wandb.Image(fig), "epoch": epoch})
         plt.close(fig)
 
         print(f"Total Training loss for epoch {epoch}: {avg_train_loss} (pred={avg_train_pred_loss:.6f}, sigreg={avg_train_sigreg_loss:.6f})")
