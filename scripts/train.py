@@ -97,7 +97,8 @@ def train_model(cfg: DictConfig):
         phi=cfg.sigreg.phi,
     ).to(device)
 
-    # optimization with warmup and cosine annealing 
+
+    # optimization with warmup and cosine annealing
     optimizer = AdamW(lewm.parameters(), lr=cfg.optimizer.lr, weight_decay=cfg.optimizer.weight_decay)
     warmup = LinearLR(optimizer, start_factor=1e-3, total_iters=cfg.warmup_epochs)
     cosine = CosineAnnealingLR(optimizer, T_max=cfg.total_epochs - cfg.warmup_epochs, eta_min=1e-6)
@@ -130,12 +131,15 @@ def train_model(cfg: DictConfig):
 
             # forward pass
             model_out = lewm(pixels, action)
-            loss, pred_loss, sigreg_loss = compute_loss(
-                next_emb_pred=model_out[0], 
+            loss, pred_loss, sigreg_loss, inv_loss = compute_loss(
+                next_emb_pred=model_out[0],
                 next_emb_target=model_out[1],
                 emb= model_out[2],
                 sigreg=lewm.sigreg,
                 lambd=cfg.sigreg.lambd,
+                action_pred=model_out[3],
+                action_target=action[:, :-1],
+                lambd_inv=cfg.inverse_dynamics.lambd,
             )
 
             # backward pass
@@ -154,6 +158,7 @@ def train_model(cfg: DictConfig):
                 "train/pred_loss": pred_loss.item(),
                 "train/sigreg_loss": sigreg_loss.item(),
                 "train/weighted_sigreg_loss": cfg.sigreg.lambd * sigreg_loss.item(),
+                "train/inv_loss": inv_loss.item(),
                 "epoch": epoch,
                 "step": i,
             })
@@ -171,12 +176,15 @@ def train_model(cfg: DictConfig):
                 action = data["action"].to(device)
                 pixels = data["pixels"].to(device)
                 model_out = lewm(pixels, action)
-                loss, pred_loss, sigreg_loss = compute_loss(
-                    next_emb_pred=model_out[0], 
+                loss, pred_loss, sigreg_loss, inv_loss = compute_loss(
+                    next_emb_pred=model_out[0],
                     next_emb_target=model_out[1],
                     emb= model_out[2],
                     sigreg=lewm.sigreg,
                     lambd=cfg.sigreg.lambd,
+                    action_pred=model_out[3], # predicted action
+                    action_target=action[:, :-1], # most recent action (not predicted)
+                    lambd_inv=cfg.inverse_dynamics.lambd,
                 )
                 validation_loss += loss.item()
                 validation_pred_loss += pred_loss.item()

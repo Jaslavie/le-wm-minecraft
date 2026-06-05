@@ -7,12 +7,21 @@ import torch
 import torch.nn.functional as F
 
 class Planner:
-    def __init__(self, max_iter, n_samples, n_elites, planning_horizon, action_dim):
+    def __init__(
+        self,
+        max_iter,
+        n_samples,
+        n_elites,
+        planning_horizon,
+        action_dim,
+        rollout_batch_size=64,
+    ):
         self.max_iter = max_iter
         self.n_samples = n_samples
         self.n_elites = n_elites
         self.horizon = planning_horizon
         self.action_dim = action_dim
+        self.rollout_batch_size = rollout_batch_size
     
     def objective_function(self, z_curr, z_g):
         """
@@ -82,16 +91,30 @@ class Planner:
 
             scores = []
             rollout_hists = []
-            for sample_idx, actions in enumerate(samples):
+            # process samples in batches
+            for start in range(0, self.n_samples, self.rollout_batch_size):
+                end = min(start + self.rollout_batch_size, self.n_samples)
+                
+                # get current actions batch
+                actions_batch = samples[start:end]
+                batch_size = actions_batch.shape[0]
+
                 # 2. Rollout actions in world model (imagination)
                 # store history of past 8 observations and actions. recall that predictor
                 # only has access to last 8 actions/obs in its memory
-                z_pred_hist = [z1.view(1, 1, -1)]
+                z_pred_hist = [z1.view(batch_size, 1, -1)]
                 a_emb_hist = []
                 
+                # turn action sequence into tensor
+                a_t = torch.as_tensor(
+                    actions_batch[:, t, :],
+                    dtype=torch.float32,
+                    device=device,
+                ).view(batch_size, 1, -1)
+                
+                # iterate over each timestep in a horizon
                 for t in range(self.horizon):
                     # embed and store each sampled action in the imagination horizon
-                    a_t = torch.as_tensor(actions[t], dtype=torch.float32, device=device).view(1, 1, -1)
                     # a_t = normalize_camera(a_t, cam_mean, cam_std)
                     a_emb = lewm.action_embedder(a_t)
                     a_emb_hist.append(a_emb)
@@ -109,20 +132,26 @@ class Planner:
                     z_pred = next_emb[:, -1:, :]
                     z_pred_hist.append(z_pred)
 
-                # final predicted embedding at end of horizon (192,)
-                z_H = z_pred_hist[-1].view(-1)
+                # iterate over each sample set in a batch to compute score
+                for sample_offset in range(batch_size):
+                    sample_idx = start + sample_offset
 
-                # 3. Compute cost: how close imagined final state is to fixed goal zg
-                # add current score
-                score = self.objective_function(z_H, zg).item()
-                scores.append(score)
-                rollout_hists.append(z_pred_hist)
+                    # final predicted embedding at end of horizon (192,)
+                    z_H = z_pred_hist[-1][sample_offset].view(-1)
 
-                if (sample_idx + 1) % 50 == 0 or sample_idx + 1 == self.n_samples:
-                    print(
-                        f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
-                        f"{sample_idx + 1}/{self.n_samples} rollouts scored"
+                    # 3. Compute cost: how close imagined final state is to fixed goal zg
+                    # add current score
+                    score = self.objective_function(z_H, zg).item()
+                    scores.append(score)
+                    rollout_hists.append(
+                        [latent[sample_offset:sample_offset + 1] for latent in z_pred_hist]
                     )
+
+                    if (sample_idx + 1) % 50 == 0 or sample_idx + 1 == self.n_samples:
+                        print(
+                            f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
+                            f"{sample_idx + 1}/{self.n_samples} rollouts scored"
+                        )
 
             #  update camera distribution parameters based on elites
             elite_idx = np.argsort(scores)[:self.n_elites]
