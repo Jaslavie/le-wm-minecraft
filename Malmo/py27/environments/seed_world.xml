@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <About>
+    <Summary>Default world with seed 6523949403328360102</Summary>
+  </About>
+
+  <ServerSection>
+    <ServerInitialConditions>
+      <Time>
+        <StartTime>1000</StartTime>
+        <AllowPassageOfTime>false</AllowPassageOfTime>
+      </Time>
+      <Weather>clear</Weather>
+    </ServerInitialConditions>
+
+    <ServerHandlers>
+      <DefaultWorldGenerator seed="6523949403328360102" forceReset="true"/>
+      <ServerQuitWhenAnyAgentFinishes/>
+    </ServerHandlers>
+  </ServerSection>
+
+  <AgentSection mode="Survival">
+    <Name>TreeBot</Name>
+    <AgentStart>
+      <!-- Default world spawn; no fixed placement. -->
+    </AgentStart>
+    <AgentHandlers>
+      <VideoProducer want_depth="false">
+        <Width>64</Width>
+        <Height>64</Height>
+      </VideoProducer>
+      <ObservationFromFullStats/>
+      <ContinuousMovementCommands turnSpeedDegs="180"/>
+    </AgentHandlers>
+  </AgentSection>
+
+</Mission>

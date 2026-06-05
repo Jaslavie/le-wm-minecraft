@@ -124,6 +124,16 @@ class LeWM(nn.Module):
             embedding_dim=embedding_dim,
         )
         self.sigreg = SIGReg(num_proj, factor, phi)
+
+        # inverse dynamics head recovers action a_t from (z_t, z_{t+1}).
+        # fixes identity collapse problem by forcing the predictor's output to
+        # depend on physics-grounded actions.
+        self.action_dim = action_dim
+        self.inverse_dynamics = nn.Sequential(
+            nn.Linear(2 * embedding_dim, embedding_dim),
+            nn.GELU(),
+            nn.Linear(embedding_dim, action_dim),
+        )
     
     def forward(self, pixels, actions):
         B, T, C, H, W = pixels.shape
@@ -138,13 +148,34 @@ class LeWM(nn.Module):
         next_emb_pred = self.predictor(emb[:, :-1], action_emb[:, :-1])
         next_emb_target = emb[:, 1:] # actual next state
 
-        return next_emb_pred, next_emb_target, emb
+        # recover predicted action based on curr embedding
+        action_pred = self.inverse_dynamics(
+            torch.cat([emb[:, :-1], next_emb_pred], dim=-1)
+        )
 
-def compute_loss(next_emb_pred, next_emb_target, emb, sigreg, lambd):
+        return next_emb_pred, next_emb_target, emb, action_pred
+
+def compute_loss(next_emb_pred, next_emb_target, emb, sigreg, lambd,
+                 action_pred=None, action_target=None, lambd_inv=0.0):
     # get overall loss
     pred_loss = F.mse_loss(next_emb_pred, next_emb_target)
 
     # step-wise sigreg (anti-collapse)
     sigreg_loss = sigreg(emb.transpose(0, 1))
 
-    return pred_loss + lambd * sigreg_loss, pred_loss, sigreg_loss
+    # inverse-dynamics loss pushes predictor to produce predicted latents with
+    # recoverable actions
+    inv_loss = next_emb_pred.new_tensor(0.0)
+    if action_pred is not None and action_target is not None and lambd_inv > 0:
+        # bce loss for binary actions
+        bin_loss = F.binary_cross_entropy_with_logits(
+            action_pred[..., :8], action_target[..., :8].float()
+        )
+        # TODO: mse loss for camera actions (disabled for now)
+        cam_loss = F.mse_loss(action_pred[..., 8:], action_target[..., 8:].float())
+        inv_loss = bin_loss + cam_loss
+
+    # total loss is the sum of the three losses (prediction, sigreg, inverse dynamics)
+    total = pred_loss + (lambd * sigreg_loss) + (lambd_inv * inv_loss)
+    
+    return total, pred_loss, sigreg_loss, inv_loss

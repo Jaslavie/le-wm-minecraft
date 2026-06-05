@@ -27,7 +27,7 @@ def planner_output_to_actions(mu, cam_mean, cam_std):
     # convert primary actions (0-7)
     # actions[:, :8] = (actions[:, :8] > binary_threshold).astype(np.float32)
 
-    # convert camera (8-10)
+    # Planner imagines camera; Malmo execution keeps fixed view.
     # mean = cam_mean.detach().cpu().numpy() if torch.is_tensor(cam_mean) else np.asarray(cam_mean)
     # std = cam_std.detach().cpu().numpy() if torch.is_tensor(cam_std) else np.asarray(cam_std)
     # camera = actions[:, 8:] * std + mean

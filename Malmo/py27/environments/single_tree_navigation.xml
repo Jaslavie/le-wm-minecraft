@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+  <About>
+    <Summary>Single-tree navigation test: one oak tree ahead of a fixed spawn. Attack disabled at the action layer; success is real distance-to-tree.</Summary>
+  </About>
+
+  <ServerSection>
+    <ServerInitialConditions>
+      <Time>
+        <StartTime>1000</StartTime>
+        <AllowPassageOfTime>false</AllowPassageOfTime>
+      </Time>
+      <Weather>clear</Weather>
+    </ServerInitialConditions>
+
+    <ServerHandlers>
+      <!-- Superflat keeps the ground perfectly level so the agent cannot fall or spawn mid-air. -->
+      <FlatWorldGenerator generatorString="3;7,2x3,2;1;" forceReset="true"/>
+      <DrawingDecorator>
+        <!-- One oak tree directly ahead of spawn at (x=0, z=15). Keep this in sync with TREE_POSITION in run_lewm_client.py. -->
+        <DrawCuboid x1="0" y1="4" z1="15" x2="0" y2="6" z2="15" type="log" variant="oak"/>
+        <DrawCuboid x1="-2" y1="7" z1="13" x2="2" y2="8" z2="17" type="leaves" variant="oak"/>
+        <DrawCuboid x1="-1" y1="9" z1="14" x2="1" y2="9" z2="16" type="leaves" variant="oak"/>
+      </DrawingDecorator>
+      <ServerQuitWhenAnyAgentFinishes/>
+    </ServerHandlers>
+  </ServerSection>
+
+  <AgentSection mode="Survival">
+    <Name>TreeBot</Name>
+    <AgentStart>
+      <!-- Fixed spawn at origin facing +Z (yaw=0), level pitch, so the tree is centered ahead at start. -->
+      <Placement x="0.5" y="4.0" z="0.5" yaw="0" pitch="0"/>
+    </AgentStart>
+    <AgentHandlers>
+      <VideoProducer want_depth="false">
+        <Width>64</Width>
+        <Height>64</Height>
+      </VideoProducer>
+      <ObservationFromFullStats/>
+      <ContinuousMovementCommands turnSpeedDegs="180"/>
+    </AgentHandlers>
+  </AgentSection>
+
+</Mission>
