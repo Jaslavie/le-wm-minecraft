@@ -122,6 +122,7 @@ def run_inference(
         n_elites=cfg.planner.n_elites,
         planning_horizon=cfg.planner.planning_horizon,
         action_dim=cfg.action_dim,
+        rollout_batch_size=cfg.planner.rollout_batch_size,
     )
 
     logs_dir = repo_path(cfg.paths.logs_dir)
@@ -341,7 +342,7 @@ def run_inference(
 if __name__ == "__main__":
     run_inference(
         # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),
-        model_path=repo_path("artifacts", "final_models", "best_model_resnet.pt"),
+        model_path=repo_path("artifacts", "final_models", "best_model_resnet_invdyn.pt"),
         use_wandb=True,
         env_name=os.environ.get("LEWM_ENV", "single_tree_navigation"),
         goal_state=os.environ.get("LEWM_GOAL_STATE", "navigation"),

@@ -2,12 +2,13 @@
 
 A major challenge is reconciling continuous and binary action steates with a highly dynamic and noisy environment. LeWM is trained on primarily 3rd person POV's of the scene with continuous actions. TLDR is below.
 
-Known challenges:
+### Known limitations
 
 - Struggles with interpreting OOD object such as diamond blocks that is not in its training data
 - Struggles with combined continuous and binary actions. Camera angles are known to turn sporadically.
+- Model struggles with lateral degrees of freedom (and in general, more elements in the action vector makes it hallucinate more)
 
-Known successful attempts:
+### Known success patterns
 
 - Environment: Use the single-tree superflat environment with a single object. This mirrors common env setups like push T with a single objective and a 3rd person POV
 - Actions: Interestingly, the model performed worse with more complex action spaces and better with less actions. This is because [naive search is very weak](https://arxiv.org/html/2604.26182) on low-level action spaces, thus performs very poorly and gets lost in noise (curse of dimensionality).
@@ -16,7 +17,15 @@ Known successful attempts:
   - Time horizon: Keeping the time horizon longer generates smoother actions. Currently at 8
   - CEM samples: similar to time horizon, larger samples (300 samples, 30 elites)
 
-## Proposed Architecture
+## Solution: Physics-grounded action conditioning for egocentric environments
+
+The original paper trains on tasks with fixed physical states. Tasks like Push-T use a single object with a fixed camera position. This means changes in latents are almost entirely caused by actions. 
+
+The **AdaLn** model is effective because it uses affine transformations (γ, β) -- these are simple permutations to the scene, like color, that can be isolated more easily in 2D tasks like Push T.
+
+However, when introducing egocentric tasks like navigating to an object in a 3D scene, these transformations get noisy. AdaLn is simply not powerful enough to understand 3D Minecraft dynamics. Thus, we train an [**Inverse dynamics model](https://arxiv.org/abs/2412.15109)** to ground Adaln in more complex Minecraft physics and so the action signals are not ignored.
+
+### Architecture
 
 The proposed architecture aims to guide the planner toward the goal by minimizing suprise. This two step approach optimizes the planner different for the 2 stages of tree chopping:
 

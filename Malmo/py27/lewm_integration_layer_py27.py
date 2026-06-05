@@ -43,8 +43,9 @@ def process_LeWM_action(action_list, current):
     if move != current[0] - current[2]:
         instructions.append("move {0}".format(move))
 
-    if strafe != current[3] - current[1]:
-        instructions.append("strafe {0}".format(strafe))
+    # Strafe disabled for fixed-view single-tree navigation.
+    # if strafe != current[3] - current[1]:
+    #     instructions.append("strafe {0}".format(strafe))
 
     # Jump/sneak/sprint are disabled for fixed-view navigation.
     # if current[4] != action_list[4]:
@@ -53,8 +54,10 @@ def process_LeWM_action(action_list, current):
     # if current[5] != action_list[5]:
     #     instructions.append("crouch {0}".format(action_list[5]))
 
-    if current[7] != action_list[7]:
-        instructions.append("attack {0}".format(action_list[7]))
+    # Re-issue attack every tick while attacking so Malmo sustains continuous mining;
+    # sending it once did not accumulate block-break progress. Release (0) only on change.
+    if action_list[7] != 0 or current[7] != action_list[7]:
+        instructions.append("attack {0}".format(int(action_list[7])))
 
     # Camera disabled for fixed-view navigation ablation.
     # if action_list[8] != current[8]:
