@@ -11,6 +11,7 @@ from pathlib import Path
 import sys
 import json
 import argparse
+import h5py
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -116,23 +117,50 @@ def collect_trajectory(env_type: str, seed: int, num_samples: int, seq_len: int 
     """
     Collect a trajectory of pixels and actions.
     """
-    if STABLE_WM_AVAILABLE and env_type == "dataset":
+    if env_type == "dataset":
         print(f"📂 Loading trajectory from mineRL_training dataset...")
-        data_dir = repo_path("data")
-        dataset = swm.data.HDF5Dataset(
-            "mineRL_training",
-            cache_dir=str(data_dir),
-            num_steps=seq_len,
-        )
-        indices = np.random.choice(len(dataset), min(num_samples, len(dataset)), replace=False)
-        batch_images, batch_actions = [], []
-        for idx in indices:
-            sample = dataset[idx]
-            img = sample["pixels"] if isinstance(sample, dict) else sample[0]
-            act = sample["action"] if isinstance(sample, dict) else sample[1]
-            batch_images.append(img)
-            batch_actions.append(act)
-        return torch.stack(batch_images), torch.stack(batch_actions)
+        
+        # Use the exact path you confirmed exists
+        h5_path = repo_path("data/mineRL_training.h5")
+        if not h5_path.exists():
+            raise FileNotFoundError(f"Could not find dataset at {h5_path}")
+            
+        with h5py.File(h5_path, "r") as f:
+            keys = list(f.keys())
+            print(f"   -> Found HDF5 keys: {keys}")
+            
+            # Robustly find the observation and action keys regardless of exact naming
+            obs_key = next((k for k in keys if "obs" in k.lower() or "pixel" in k.lower()), keys[0])
+            act_key = next((k for k in keys if "act" in k.lower()), keys[1] if len(keys) > 1 else keys[0])
+            
+            print(f"   -> Using keys: observations='{obs_key}', actions='{act_key}'")
+            
+            obs_data = f[obs_key]
+            act_data = f[act_key]
+            
+            # Handle both flat datasets (N, C, H, W) and pre-chunked sequences (N, seq_len, C, H, W)
+            if obs_data.ndim == 5: 
+                # Data is already chunked into sequences
+                indices = np.random.choice(obs_data.shape[0], min(num_samples, obs_data.shape[0]), replace=False)
+                batch_images = torch.tensor(np.array(obs_data[indices]))
+                batch_actions = torch.tensor(np.array(act_data[indices]))
+            else: 
+                # Data is flat, we need to extract subsequences of length seq_len
+                total_frames = obs_data.shape[0]
+                max_start = max(1, total_frames - seq_len)
+                start_indices = np.random.randint(0, max_start, min(num_samples, max_start))
+                batch_images, batch_actions = [], []
+                
+                for start in start_indices:
+                    batch_images.append(torch.tensor(np.array(obs_data[start:start+seq_len])))
+                    batch_actions.append(torch.tensor(np.array(act_data[start:start+seq_len])))
+                    
+                batch_images = torch.stack(batch_images)
+                batch_actions = torch.stack(batch_actions)
+                
+        print(f"✅ Successfully loaded {batch_images.shape[0]} trajectories of length {seq_len}.")
+        return batch_images, batch_actions
+        
     else:
         print(f"🎲 Generating simulated trajectory for '{env_type}' (Seed: {seed})...")
         # Simulate data shapes: (num_samples, seq_len, C, H, W)
