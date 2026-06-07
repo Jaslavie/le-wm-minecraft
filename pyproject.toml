@@ -19,6 +19,7 @@ dependencies = [
     "h5py",
     "pillow",
     "wandb",
+    "ipykernel"
 ]
 
 [tool.setuptools.packages.find]
