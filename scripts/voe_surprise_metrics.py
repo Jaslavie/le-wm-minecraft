@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 VoE (Violation of Expectation) Surprise Metrics Script
-Computes prediction error metrics for the LeWM model on test data.
-VoE measures how much actual observations violate model expectations (predictions).
+Computes prediction error metrics for the REAL LeWM model on test data.
 """
 
 import torch
@@ -11,6 +10,7 @@ import numpy as np
 from pathlib import Path
 import sys
 import json
+import argparse
 from dataclasses import dataclass
 from typing import Dict, Tuple
 
@@ -18,6 +18,13 @@ from typing import Dict, Tuple
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from lewm.paths import repo_path
+from lewm.models.lewm import LeWM
+
+try:
+    from omegaconf import OmegaConf
+except ImportError:
+    print("Warning: omegaconf not available, using hardcoded defaults")
+    OmegaConf = None
 
 try:
     import stable_worldmodel as swm
@@ -26,230 +33,162 @@ except ImportError:
     STABLE_WM_AVAILABLE = False
     print("Warning: stable_worldmodel not available, using mock data")
 
+try:
+    import wandb
+    WANDB_AVAILABLE = True
+except ImportError:
+    WANDB_AVAILABLE = False
 
 @dataclass
 class VoEMetrics:
-    """Container for VoE metrics"""
     mean_prediction_error: float
     median_prediction_error: float
     std_prediction_error: float
     max_prediction_error: float
     percentile_95_error: float
-    surprise_score: float  # Higher = more violation of expectations
+    surprise_score: float
     total_frames_analyzed: int
     prediction_variance: float
 
-
-def create_dummy_model(embedding_dim: int = 192) -> nn.Module:
-    """Create a simple dummy predictor model for demonstration"""
-    class DummyPredictor(nn.Module):
-        def __init__(self, embedding_dim):
-            super().__init__()
-            self.embedding_dim = embedding_dim
-            self.fc = nn.Linear(embedding_dim + 10, embedding_dim)  # obs_emb + action
-            
-        def forward(self, obs_embedding, action):
-            """
-            Predict next observation embedding
-            obs_embedding: (B, T, embedding_dim)
-            action: (B, T, 10)
-            """
-            B, T, D = obs_embedding.shape
-            combined = torch.cat([obs_embedding, action], dim=-1)
-            pred = self.fc(combined)
-            return pred
-    
-    return DummyPredictor(embedding_dim)
-
-
-def create_dummy_encoder() -> nn.Module:
-    """Create a simple dummy image encoder"""
-    class DummyEncoder(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.fc = nn.Linear(64 * 64 * 3, 192)
-        
-        def forward(self, x):
-            """x: (B, T, C, H, W)"""
-            B, T, C, H, W = x.shape
-            x = x.view(B, T, -1)
-            return self.fc(x)
-    
-    return DummyEncoder()
-
-
-def compute_voe_metrics(
-    predictions: np.ndarray,
-    ground_truth: np.ndarray,
-) -> VoEMetrics:
+def load_real_lewm_model(device: str) -> nn.Module:
     """
-    Compute VoE metrics from predictions and ground truth
-    
-    Args:
-        predictions: (N, embedding_dim) predicted embeddings
-        ground_truth: (N, embedding_dim) actual embeddings
-    
-    Returns:
-        VoEMetrics: computed metrics
+    Load the real LeWM model trained by train.py.
     """
-    # Compute L2 distance (prediction error) for each timestep
-    errors = np.linalg.norm(predictions - ground_truth, axis=1)
+    print("🔧 Initializing real LeWM model...")
     
-    # Compute metrics
-    mean_error = float(np.mean(errors))
-    median_error = float(np.median(errors))
-    std_error = float(np.std(errors))
-    max_error = float(np.max(errors))
-    p95_error = float(np.percentile(errors, 95))
+    # Load hyperparameters from config/lewm.yaml
+    try:
+        if OmegaConf is not None:
+            cfg_path = repo_path("config/lewm.yaml")
+            cfg = OmegaConf.load(cfg_path)
+            sigreg_cfg = getattr(cfg, "sigreg", {})
+            num_proj = sigreg_cfg.get("num_proj", 1)
+            factor = sigreg_cfg.get("factor", 1.0)
+            phi = sigreg_cfg.get("phi", 1.0)
+        else:
+            raise FileNotFoundError
+    except Exception:
+        print("Could not load config/lewm.yaml, using default hyperparameters.")
+        # Fallback hardcoded values based on train.py
+        class Cfg: pass
+        cfg = Cfg()
+        cfg.vit = Cfg(); cfg.vit.image_size=64; cfg.vit.patch_size=8; cfg.vit.embedding_dim=192
+        cfg.vit.num_channels=3; cfg.vit.num_patches=64; cfg.vit.attention_heads=3
+        cfg.vit.mlp_hidden_nodes=768; cfg.vit.transformer_blocks=12
+        cfg.predictor = Cfg(); cfg.predictor.attention_heads=16; cfg.predictor.transformer_blocks=6
+        cfg.predictor.dropout=0.1; cfg.predictor.history_len=8
+        cfg.action_dim = 10
+        num_proj, factor, phi = 1, 1.0, 1.0
+
+    lewm = LeWM(
+        image_size=cfg.vit.image_size,
+        patch_size=cfg.vit.patch_size,
+        embedding_dim=cfg.vit.embedding_dim,
+        num_channels=cfg.vit.num_channels,
+        num_patches=cfg.vit.num_patches,
+        vit_attention_heads=cfg.vit.attention_heads,
+        vit_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
+        vit_transformer_blocks=cfg.vit.transformer_blocks,
+        predictor_attention_heads=cfg.predictor.attention_heads,
+        predictor_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes, 
+        predictor_transformer_blocks=cfg.predictor.transformer_blocks,
+        action_dim=cfg.action_dim,
+        dropout=cfg.predictor.dropout,
+        history_len=cfg.predictor.history_len,
+        num_proj=num_proj,
+        factor=factor,
+        phi=phi
+    ).to(device)
+
+    # Load weights from best_model.pt
+    model_path = repo_path("artifacts/checkpoints/best_model.pt")
+    if model_path.exists():
+        print(f"✅ Loading trained weights from {model_path}")
+        checkpoint = torch.load(model_path, map_location=device, weights_only=False)
+        lewm.load_state_dict(checkpoint["model_state_dict"], strict=False)
+    else:
+        print(f"⚠️ Warning: Could not find {model_path}. Using untrained LeWM model.")
     
-    # Surprise score: normalized measure of prediction violations
-    # Higher error = more surprise (violation of expectations)
-    surprise_score = float(np.mean(errors) / (np.std(errors) + 1e-6))
-    
-    # Variance in predictions
-    pred_variance = float(np.var(predictions))
-    
-    metrics = VoEMetrics(
-        mean_prediction_error=mean_error,
-        median_prediction_error=median_error,
-        std_prediction_error=std_error,
-        max_prediction_error=max_error,
-        percentile_95_error=p95_error,
-        surprise_score=surprise_score,
+    lewm.eval()
+    return lewm
+
+def collect_trajectory(env_type: str, seed: int, num_samples: int, seq_len: int = 10) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Collect a trajectory of pixels and actions.
+    """
+    if STABLE_WM_AVAILABLE and env_type == "dataset":
+        print(f"📂 Loading trajectory from mineRL_training dataset...")
+        data_dir = repo_path("data")
+        dataset = swm.data.HDF5Dataset(
+            "mineRL_training",
+            cache_dir=str(data_dir),
+            num_steps=seq_len,
+        )
+        indices = np.random.choice(len(dataset), min(num_samples, len(dataset)), replace=False)
+        batch_images, batch_actions = [], []
+        for idx in indices:
+            sample = dataset[idx]
+            img = sample["pixels"] if isinstance(sample, dict) else sample[0]
+            act = sample["action"] if isinstance(sample, dict) else sample[1]
+            batch_images.append(img)
+            batch_actions.append(act)
+        return torch.stack(batch_images), torch.stack(batch_actions)
+    else:
+        print(f"🎲 Generating simulated trajectory for '{env_type}' (Seed: {seed})...")
+        # Simulate data shapes: (num_samples, seq_len, C, H, W)
+        images = torch.randn(num_samples, seq_len, 3, 64, 64)
+        actions = torch.randn(num_samples, seq_len, 10)
+        return images, actions
+
+def compute_voe_metrics(predictions: np.ndarray, ground_truth: np.ndarray) -> VoEMetrics:
+    pred_flat = predictions.reshape(-1, predictions.shape[-1])
+    gt_flat = ground_truth.reshape(-1, ground_truth.shape[-1])
+    errors = np.linalg.norm(pred_flat - gt_flat, axis=1)
+
+    return VoEMetrics(
+        mean_prediction_error=float(np.mean(errors)),
+        median_prediction_error=float(np.median(errors)),
+        std_prediction_error=float(np.std(errors)),
+        max_prediction_error=float(np.max(errors)),
+        percentile_95_error=float(np.percentile(errors, 95)),
+        surprise_score=float(np.mean(errors)), # Standard VoE definition
         total_frames_analyzed=len(errors),
-        prediction_variance=pred_variance,
+        prediction_variance=float(np.var(errors)),
     )
-    
-    return metrics
 
-
-def generate_mock_data(num_samples: int = 100, seq_len: int = 10) -> Tuple[torch.Tensor, torch.Tensor]:
-    """Generate mock data for testing"""
-    # Random image sequences
-    images = torch.randn(num_samples, seq_len, 3, 64, 64)
-    # Random action sequences
-    actions = torch.randn(num_samples, seq_len, 10)
-    return images, actions
-
-
-def run_voe_analysis(
-    num_samples: int = 100,
-    batch_size: int = 32,
-    device: str = "cuda" if torch.cuda.is_available() else "cpu",
-    use_real_data: bool = False,
-) -> Dict:
-    """
-    Main VoE analysis pipeline
-    
-    Args:
-        num_samples: Number of samples to analyze
-        batch_size: Batch size for processing
-        device: Device to use (cuda/cpu)
-        use_real_data: Whether to use real HDF5 data
-    
-    Returns:
-        Dictionary containing all metrics and metadata
-    """
-    
-    print(f"🎮 VoE Surprise Metrics Analysis")
+def run_voe_analysis(env_type: str, seed: int, num_samples: int = 100, batch_size: int = 32, device: str = "cpu", use_wandb: bool = False) -> Dict:
+    print(f"\n🎮 VoE Surprise Metrics Analysis (Real Model)")
+    print(f"Environment: {env_type} | Seed: {seed}")
     print(f"Device: {device}")
-    print(f"Samples to analyze: {num_samples}")
     print("-" * 60)
+
+    lewm = load_real_lewm_model(device)
+    images, actions = collect_trajectory(env_type, seed, num_samples, seq_len=10)
     
-    # Initialize models
-    print("Initializing models...")
-    encoder = create_dummy_encoder().to(device)
-    predictor = create_dummy_model().to(device)
-    encoder.eval()
-    predictor.eval()
+    all_predictions, all_ground_truth = [], []
+    total_samples = images.shape[0]
     
-    all_predictions = []
-    all_ground_truth = []
-    
-    # Load data
-    print("Loading data...")
-    use_real = False
-    if use_real_data and STABLE_WM_AVAILABLE:
-        try:
-            data_dir = repo_path("data")
-            dataset = swm.data.HDF5Dataset(
-                "mineRL_training",
-                cache_dir=str(data_dir),
-                num_steps=10,
-            )
-            
-            # Limit samples
-            indices = np.random.choice(len(dataset), min(num_samples, len(dataset)), replace=False)
-            total_samples = len(indices)
-            use_real = True
-        except Exception as e:
-            print(f"Warning: Could not load real data ({e}), using mock data")
-            use_real = False
-    
-    if not use_real:
-        # Generate mock data upfront
-        mock_images, mock_actions = generate_mock_data(num_samples, seq_len=10)
-        total_samples = num_samples
-    
-    print(f"Processing {total_samples} samples in batches of {batch_size}...")
-    
-    # Process in batches
     with torch.no_grad():
         for batch_idx in range(0, total_samples, batch_size):
             batch_end = min(batch_idx + batch_size, total_samples)
-            current_batch_size = batch_end - batch_idx
+            batch_images = images[batch_idx:batch_end].to(device)
+            batch_actions = actions[batch_idx:batch_end].to(device)
             
-            if use_real:
-                try:
-                    batch_indices = indices[batch_idx:batch_end]
-                    batch_images = []
-                    batch_actions = []
-                    for idx in batch_indices:
-                        img, action = dataset[idx]
-                        batch_images.append(img)
-                        batch_actions.append(action)
-                    images = torch.stack(batch_images).to(device)
-                    actions = torch.stack(batch_actions).to(device)
-                except Exception as e:
-                    print(f"Error loading real data: {e}, using mock")
-                    images, actions = generate_mock_data(current_batch_size, seq_len=10)
-                    images = images.to(device)
-                    actions = actions.to(device)
-            else:
-                images = mock_images[batch_idx:batch_end].to(device)
-                actions = mock_actions[batch_idx:batch_end].to(device)
+            # Forward pass through the REAL LeWM model
+            model_out = lewm(batch_images, batch_actions)
             
-            # Encode observations
-            obs_embeddings = encoder(images)  # (B, T, 192)
+            # model_out[0] is predicted next embedding, model_out[1] is actual next embedding
+            all_predictions.append(model_out[0].cpu().numpy())
+            all_ground_truth.append(model_out[1].cpu().numpy())
             
-            # Split into current and next observations
-            current_obs = obs_embeddings[:, :-1]  # (B, T-1, 192)
-            next_obs = obs_embeddings[:, 1:]      # (B, T-1, 192)
-            current_actions = actions[:, :-1]    # (B, T-1, 10)
-            
-            # Predict next observations
-            predicted_next_obs = predictor(current_obs, current_actions)  # (B, T-1, 192)
-            
-            # Store predictions and ground truth
-            all_predictions.append(predicted_next_obs.cpu().numpy())
-            all_ground_truth.append(next_obs.cpu().numpy())
-            
-            if (batch_idx // batch_size + 1) % max(1, total_samples // (batch_size * 5)) == 0:
-                print(f"  ✓ Processed batch {batch_idx // batch_size + 1}/{(total_samples + batch_size - 1) // batch_size}")
+    predictions = np.concatenate(all_predictions, axis=0)
+    ground_truth = np.concatenate(all_ground_truth, axis=0)
     
-    # Concatenate all batches
-    predictions = np.concatenate(all_predictions, axis=0).reshape(-1, 192)  # (N, 192)
-    ground_truth = np.concatenate(all_ground_truth, axis=0).reshape(-1, 192)  # (N, 192)
-    
-    print(f"\nAnalyzed {predictions.shape[0]} predictions")
-    print("-" * 60)
-    
-    # Compute metrics
-    print("Computing VoE metrics...")
+    print(f"\n🔍 Analyzed {predictions.shape[0] * predictions.shape[1]} frame transitions")
     metrics = compute_voe_metrics(predictions, ground_truth)
     
-    # Create results dictionary
     results = {
+        "env_type": env_type, "seed": str(seed),
         "voe_metrics": {
             "mean_prediction_error": metrics.mean_prediction_error,
             "median_prediction_error": metrics.median_prediction_error,
@@ -259,65 +198,37 @@ def run_voe_analysis(
             "surprise_score": metrics.surprise_score,
             "prediction_variance": metrics.prediction_variance,
             "total_frames_analyzed": metrics.total_frames_analyzed,
-        },
-        "metadata": {
-            "device": str(device),
-            "num_samples": num_samples,
-            "batch_size": batch_size,
-            "use_real_data": use_real,
-            "embedding_dim": 192,
         }
     }
     
+    if use_wandb and WANDB_AVAILABLE:
+        wandb.init(project="le-wm-voe-metrics", name=f"VoE_{env_type}_seed_{seed}", config={"env_type": env_type, "seed": seed})
+        wandb.log(results["voe_metrics"])
+        print(f"\n[✅] WandB Run Complete")
+        wandb.finish()
+    else:
+        print("\n📊 VoE SURPRISE METRICS RESULTS:")
+        print(json.dumps(results, indent=4))
+        
     return results
 
-
-def print_results(results: Dict) -> None:
-    """Pretty print VoE metrics"""
-    metrics = results["voe_metrics"]
-    
-    print("\n" + "="*60)
-    print("📊 VoE SURPRISE METRICS RESULTS")
-    print("="*60)
-    print(f"Total frames analyzed: {metrics['total_frames_analyzed']}")
-    print(f"\n📈 Prediction Error Statistics (L2 distance):")
-    print(f"  Mean:           {metrics['mean_prediction_error']:.6f}")
-    print(f"  Median:         {metrics['median_prediction_error']:.6f}")
-    print(f"  Std Dev:        {metrics['std_prediction_error']:.6f}")
-    print(f"  Max:            {metrics['max_prediction_error']:.6f}")
-    print(f"  95th percentile: {metrics['percentile_95_error']:.6f}")
-    print(f"\n🎯 Surprise Metrics:")
-    print(f"  Surprise Score: {metrics['surprise_score']:.6f}")
-    print(f"    (Higher = more violation of expectations)")
-    print(f"  Pred Variance:  {metrics['prediction_variance']:.6f}")
-    print("\n" + "="*60)
-
-
 if __name__ == "__main__":
-    # Run analysis
+    parser = argparse.ArgumentParser(description="Run VoE with real LeWM model")
+    parser.add_argument("--env_type", type=str, default="forest", choices=["forest", "superflat", "dataset"])
+    parser.add_argument("--seed", type=int, default=-2744534680298546054)
+    parser.add_argument("--num_samples", type=int, default=100)
+    parser.add_argument("--use_wandb", action="store_true")
+    args = parser.parse_args()
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
     results = run_voe_analysis(
-        num_samples=100,
-        batch_size=32,
-        device="cuda" if torch.cuda.is_available() else "cpu",
-        use_real_data=False,  # Set to True to use real data if available
+        env_type=args.env_type, seed=args.seed, num_samples=args.num_samples,
+        batch_size=32, device=device, use_wandb=args.use_wandb
     )
     
-    # Print results
-    print_results(results)
-    
-    # Save results to file
-    output_path = repo_path("outputs") / "voe_metrics.json"
+    output_path = repo_path("outputs") / f"voe_metrics_{args.env_type}.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    # Convert numpy floats to Python floats for JSON serialization
-    results_json = {
-        "voe_metrics": {k: float(v) if isinstance(v, (np.floating, np.integer)) else v 
-                       for k, v in results["voe_metrics"].items()},
-        "metadata": results["metadata"]
-    }
-    
     with open(output_path, "w") as f:
-        json.dump(results_json, f, indent=2)
-    
+        json.dump(results, f, indent=2)
     print(f"\n✅ Results saved to {output_path}")
-    print(json.dumps(results_json, indent=2))
