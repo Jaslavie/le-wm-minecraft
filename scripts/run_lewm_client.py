@@ -13,7 +13,7 @@ from torchvision import transforms
 from omegaconf import DictConfig, OmegaConf
 
 from lewm.models.lewm import LeWM
-from lewm.planning.planner import Planner
+from lewm.planning import Planner
 from lewm.data.utils import get_cam_mean_std
 from lewm.paths import repo_path
 from lewm.data.utils import planner_output_to_actions
@@ -269,4 +269,4 @@ def run_inference(model_path: str, use_wandb: bool = True):
 
 if __name__ == "__main__":
     # Default to latest checkpoint
-    run_inference(model_path=repo_path("artifacts", "checkpoints", "epoch_004.pt"), use_wandb=True)
+    run_inference(model_path=repo_path("artifacts", "checkpoints", "best_model_resnet.pt"), use_wandb=True)
