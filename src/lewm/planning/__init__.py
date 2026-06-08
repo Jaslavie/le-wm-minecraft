@@ -1,3 +1,3 @@
-from lewm.planning.planner import Planner
+from lewm.planning.plannerplus import Planner
 
 __all__ = ["Planner"]

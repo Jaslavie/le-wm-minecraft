@@ -18,6 +18,7 @@ dependencies = [
     "h5py",
     "pillow",
     "wandb",
+    "imageio"
 ]
 
 [tool.setuptools.packages.find]
