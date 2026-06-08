@@ -26,7 +26,6 @@ def process_LeWM_action(action_list, current, discrete=False):
         instructions.append(f"strafe {strafe}")
         instructions.append(f"jump {action_list[4]}")
         instructions.append(f"crouch {action_list[5]}")
-        instructions.append(f"crouch {action_list[5]}")
         instructions.append(f"attack {action_list[7]}")
         instructions.append(f"turn {action_list[8]}")
         instructions.append(f"pitch {action_list[9]}")
