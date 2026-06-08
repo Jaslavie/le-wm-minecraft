@@ -2,6 +2,7 @@ import pickle
 import os
 import struct
 import torch
+import torch.nn.functional as F
 import socket
 import time
 import math
@@ -76,15 +77,11 @@ def recvall(sock, nbytes):
 def run_inference(
     model_path: str,
     env_name: str,
-    goal_state: str,
-    goal_path: str | Path | None = None,
     use_wandb: bool = True,
 ):
     """
     model_path: path to the trained LeWM model checkpoint
     env_name: name of Malmo sandbox environment to test on
-    goal_state: task objective, either navigation or chopping
-    goal_path: path to one goal frame pickle file
     use_wandb: whether to use wandb for logging
     
     Returns:
@@ -94,11 +91,17 @@ def run_inference(
     # load environment configuration
     cfg = OmegaConf.load(repo_path("config", "lewm.yaml"))
     env_cfg = cfg.env.configs[env_name]
-    target_position = tuple(env_cfg.target_position)
+    # multi-tree environments will have multiple target positions
+    if env_cfg.get("target_positions"):
+        target_positions = [tuple(pos) for pos in env_cfg.target_positions]
+    else:
+        target_positions = [tuple(env_cfg.target_position)]
+    # begin with first target position
+    target_idx = 0
+    target_position = target_positions[target_idx]
     target_name = env_cfg.target_name
 
-    # load paths to goal frame and checkpoint
-    goal_path = goal_path or repo_path(cfg.paths.goal_frame)
+    # load paths to checkpoint
     checkpoint = torch.load(Path(model_path), map_location="cpu") # Allow model selection for evals
 
     # load camera mean and std
@@ -109,13 +112,30 @@ def run_inference(
         transforms.ToTensor(),
     ])
 
-    # Load goal frame to correct size for encoder
-    goal_name = Path(goal_path).stem
-    with open(str(goal_path), "rb") as file:
+    # Load goal frames to correct size for encoder
+    nav_goal_path = repo_path(cfg.paths.nav_goal_frame)
+    chop_goal_path = repo_path(cfg.paths.chop_goal_frame)
+    goal_name, chop_goal_name = nav_goal_path.stem, chop_goal_path.stem
+    with open(str(nav_goal_path), "rb") as file:
         goal_obs = process_frame_pixels(transform, pickle.load(file)[0])
+    # Initialize with the first stage: navigation
+    stage = "NAV"
+    with open(str(chop_goal_path), "rb") as file:
+        chop_goal_obs = process_frame_pixels(transform, pickle.load(file)[0])
 
+    # Set universal device
+    device = torch.device(
+        "cuda" if torch.cuda.is_available()
+        else "mps" if torch.backends.mps.is_available()
+        else "cpu"
+    )
     # Initialize models
-    lewm_model = load_trained_lewm(cfg, checkpoint)
+    lewm_model = load_trained_lewm(cfg, checkpoint).to(device)
+
+    @torch.no_grad()
+    def enc(obs):
+        return lewm_model.encoder(obs.to(device)).view(-1)
+    
     planner = Planner(
         max_iter=cfg.planner.max_iter,
         n_samples=cfg.planner.n_samples,
@@ -125,6 +145,12 @@ def run_inference(
         rollout_batch_size=cfg.planner.rollout_batch_size,
     )
 
+    # Encode chop goal frame which is shared across all trees
+    # We use this to determine if chopping is complete by computing the latent MSE
+    with torch.no_grad():
+        chop_goal_z = enc(chop_goal_obs)
+
+    # Initialize logging directory
     logs_dir = repo_path(cfg.paths.logs_dir)
     logs_dir.mkdir(parents=True, exist_ok=True)
     if use_wandb:
@@ -149,6 +175,8 @@ def run_inference(
     distance_by_step = []
     # initialize warm start for first plan
     last_distribution_params = None
+    chop_done_ct = 0
+    chop_stage_steps = 0
     # Neutral action so Malmo does not keep moving during long CEM replans.
     stop_action = np.zeros(cfg.action_dim, dtype=np.float64)
 
@@ -160,11 +188,9 @@ def run_inference(
 
     # Begin loop
     failed = False
-    success_threshold_met = False
     while (
         not failed
         and step < cfg.planner.max_steps # reached max steps
-        and not success_threshold_met # reached success threshold
     ):
         start = time.perf_counter()
         # Receive frame
@@ -190,6 +216,44 @@ def run_inference(
         # Preprocess current observation (1, 3, 64, 64)
         obs = process_frame_pixels(transform, frame)
 
+        # Switch stage from nav to chop when close enough to the current tree target
+        if stage == "NAV" and distance_to_tree < cfg.planner.success_distance:
+            stage = "CHOP"
+            action_queue = []
+            last_distribution_params = None
+            chop_done_ct = 0
+            chop_stage_steps = 0
+            print("switching to CHOP")
+
+        # Switch back to nav after chopping is complete
+        chop_mse = None
+        if stage == "CHOP":
+            chop_stage_steps += 1
+            # Check that curr observation is close enough to the chop goal latent
+            with torch.no_grad():
+                chop_mse = F.mse_loss(enc(obs), chop_goal_z).item()
+            if chop_mse < cfg.planner.chop_done_mse:
+                chop_done_ct += 1
+            else:
+                chop_done_ct = 0
+            # Bot needs consecutive MSEs below the threshold to consider 
+            # chopping complete
+            chop_done_by_mse = chop_done_ct >= cfg.planner.chop_done_patience
+            chop_complete = (
+                chop_done_by_mse
+                or chop_stage_steps >= cfg.planner.chop_max_steps
+            )
+            # Update target if there are multiple trees and turn state back to nav
+            if chop_complete:
+                target_idx = (target_idx + 1) % len(target_positions)
+                target_position = target_positions[target_idx]
+                stage = "NAV"
+                action_queue = []
+                last_distribution_params = None
+                chop_done_ct = 0
+                chop_stage_steps = 0
+                print("switching to NAV")
+
         # Plan when action queue is empty
         if not action_queue:
             warm_start = None
@@ -212,8 +276,9 @@ def run_inference(
                 }
             
             # Planner embeds obs with vit in its pipeline
+            active_goal_obs = chop_goal_obs if stage == "CHOP" else goal_obs
             action_sequence, planning_losses, distribution_params = planner.planner(
-                lewm_model, obs, goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start=warm_start
+                lewm_model, obs, active_goal_obs, cam_mean, cam_std, device, cfg.sigreg.lambd, warm_start=warm_start
             )
             current_goal_mse = planning_losses["current_goal_mse"]
             # update warm start for next plan
@@ -222,7 +287,7 @@ def run_inference(
             # build action queue after CEM planning runs
             action_queue = list(planner_output_to_actions(action_sequence, cam_mean, cam_std))
             # append stop action to queue to prevent movement during long replans
-            action_queue.append(stop_action.copy()) # 
+            action_queue.append(stop_action.copy())
 
             print(f"finished planning: action_sequence={action_sequence.shape}, queue={len(action_queue)}")
         else:
@@ -243,8 +308,10 @@ def run_inference(
             metrics = {
                 "planning/step": step,
                 "planning/env_name": env_name,
-                "planning/goal_state": goal_state,
-                "planning/goal_name": goal_name,
+                "planning/goal_state": stage,
+                "planning/stage": stage,
+                "planning/target_index": target_idx,
+                "planning/goal_name": chop_goal_name if stage == "CHOP" else goal_name,
                 "control/target_name": target_name,
                 "control/task_success_latent_mse": current_goal_mse,
 
@@ -262,9 +329,12 @@ def run_inference(
             }
 
             metrics["control/distance_to_tree"] = distance_to_tree
-            metrics["control/task_success_distance"] = float(
+            metrics["control/at_target_distance"] = float(
                 distance_to_tree < cfg.planner.success_distance
             )
+            if chop_mse is not None:
+                metrics["planning/chop_mse"] = chop_mse
+                metrics["planning/chop_stage_steps"] = chop_stage_steps
 
             # Plot planner objective and runtime.
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -284,14 +354,6 @@ def run_inference(
 
         # Send actions to Malmo to perform
         client.sendall(pickle.dumps(action_to_take.tolist()))
-
-        # Navigation success is defined by the real distance to the target
-        if distance_to_tree < cfg.planner.success_distance:
-            print(
-                f"reached {target_name}: "
-                f"distance={distance_to_tree:.2f} < {cfg.planner.success_distance}"
-            )
-            success_threshold_met = True
 
     # Save rollout frames for video creation
     rollout_frames_path = repo_path(cfg.paths.fixtures_dir, "rollout_frames.pkl")
@@ -344,6 +406,5 @@ if __name__ == "__main__":
         # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),
         model_path=repo_path("artifacts", "final_models", "best_model_resnet_invdyn.pt"),
         use_wandb=True,
-        env_name=os.environ.get("LEWM_ENV", "single_tree_navigation"),
-        goal_state=os.environ.get("LEWM_GOAL_STATE", "navigation"),
+        env_name=os.environ.get("LEWM_ENV", "multi_tree_navigation"),
     )

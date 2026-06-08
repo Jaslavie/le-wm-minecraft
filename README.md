@@ -1,6 +1,10 @@
 # LeWorldModel (LeWM) for Minecraft
 
-Implementing LeWorldModel (LeWM) from scratch in Minecraft within the Malmo sandbox environment using MineRL training datasets.
+We adapt LeWorldModel (LeWM) to perform simple Minecraft tasks, beginning with tree-chopping, using the Malmo sandbox environment.
+
+Minecraft by nature of its 3D design is more noisy than the primarily 2D and 3rd person POV tasks presented in the paper. This introduces new challenges with grounding the model in Minecraft physics.
+
+![LeWM Minecraft architecture](artifacts/images/lewm_architecture_diagram.png)
 
 Training data: [https://zenodo.org/records/12659939](https://zenodo.org/records/12659939)
 
@@ -61,7 +65,7 @@ le-wm-minecraft/
 ├── data/                  # raw MineRL data + mineRL_training.h5
 ├── artifacts/
 │   ├── checkpoints/       # best_model.pt, epoch_*.pt
-│   └── fixtures/          # goal_frame.pkl, video_frames.pkl
+│   └── fixtures/          # goal_tree_nav.pkl, goal_tree_chop.pkl, video_frames.pkl
 └── Malmo/LeWM_Files/      # Malmo server integration (Python 3.5)
 ```
 

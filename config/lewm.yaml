@@ -10,7 +10,10 @@ paths:
   best_model: artifacts/checkpoints/best_model.pt
   latest_model: artifacts/checkpoints/latest_model.pt
   fixtures_dir: artifacts/fixtures
-  goal_frame: artifacts/fixtures/goal_frame.pkl
+
+  nav_goal_frame: artifacts/fixtures/goal_tree_nav.pkl
+  chop_goal_frame: artifacts/fixtures/goal_tree_chop.pkl
+  
   video_frames: artifacts/fixtures/video_frames.pkl
   logs_dir: artifacts/charts
 
@@ -67,9 +70,12 @@ planner:
   n_elites: 30
   rollout_batch_size: 64
   planning_horizon: 8
-  max_steps: 80
+  max_steps: 200
   success_threshold: 0.5 # success threshold for each goal
   success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
+  chop_done_mse: 0.05 # latent MSE threshold to determine if chopping is complete
+  chop_done_patience: 3 # consecutive low-MSE steps before CHOP is complete
+  chop_max_steps: 15 # always advance after this many CHOP steps
 
 # == Malmo env/task settings ==
 env:
@@ -78,11 +84,17 @@ env:
       xml: Malmo/py27/environments/discrimination_test.xml
       target_name: oak_tree
       target_position: [-6.0, 15.0]
-      navigation_goal_image: artifacts/fixtures/goal_frame.pkl
-      chopping_goal_image: null
     single_tree_navigation:
       xml: Malmo/py27/environments/single_tree_navigation.xml
       target_name: oak_tree
       target_position: [0.0, 15.0]
-      navigation_goal_image: artifacts/fixtures/goal_frame.pkl
-      chopping_goal_image: null
+    multi_tree_navigation:
+      xml: Malmo/py27/environments/multi_tree_navigation.xml
+      target_name: oak_tree
+      target_position: [0.0, 15.0]
+      target_positions:
+        - [0.0, 15.0]
+        - [-7.0, 12.0]
+        - [6.0, 18.0]
+        - [3.0, 25.0]
+        - [-10.0, 23.0]
