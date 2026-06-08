@@ -4,7 +4,7 @@ We adapt LeWorldModel (LeWM) to perform simple Minecraft tasks, beginning with t
 
 Minecraft by nature of its 3D design is more noisy than the primarily 2D and 3rd person POV tasks presented in the paper. This introduces new challenges with grounding the model in Minecraft physics.
 
-![LeWM Minecraft architecture](artifacts/images/lewm_architecture_diagram.png)
+![LeWM Minecraft architecture](artifacts/images/lewm_minecraft_architecture_diagram.png)
 
 Training data: [https://zenodo.org/records/12659939](https://zenodo.org/records/12659939)
 
