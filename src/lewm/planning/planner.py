@@ -102,19 +102,18 @@ class Planner:
                 # 2. Rollout actions in world model (imagination)
                 # store history of past 8 observations and actions. recall that predictor
                 # only has access to last 8 actions/obs in its memory
-                z_pred_hist = [z1.view(batch_size, 1, -1)]
+                z_pred_hist = [z1.view(1, 1, -1).expand(batch_size, -1, -1)]
                 a_emb_hist = []
-                
-                # turn action sequence into tensor
-                a_t = torch.as_tensor(
-                    actions_batch[:, t, :],
-                    dtype=torch.float32,
-                    device=device,
-                ).view(batch_size, 1, -1)
                 
                 # iterate over each timestep in a horizon
                 for t in range(self.horizon):
                     # embed and store each sampled action in the imagination horizon
+                    # turn action sequence into tensor
+                    a_t = torch.as_tensor(
+                        actions_batch[:, t, :],
+                        dtype=torch.float32,
+                        device=device,
+                    ).view(batch_size, 1, -1)
                     # a_t = normalize_camera(a_t, cam_mean, cam_std)
                     a_emb = lewm.action_embedder(a_t)
                     a_emb_hist.append(a_emb)
