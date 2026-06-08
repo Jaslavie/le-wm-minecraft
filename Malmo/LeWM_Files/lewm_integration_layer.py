@@ -18,8 +18,8 @@ def process_LeWM_action(action_list, current, discrete=False):
 
     instructions = []
 
-    move = action_list[0] - action_list [2]
-    strafe = action_list[3] - action_list[1]
+    move = (action_list[0] - action_list [2])/2
+    strafe = (action_list[3] - action_list[1])/2
 
     if discrete:
         instructions.append(f"move {move}")

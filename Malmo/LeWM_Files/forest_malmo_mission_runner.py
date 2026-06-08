@@ -10,7 +10,7 @@ import socket
 import random
 
 # FIX: Set a random seed so the "random" forest layout is exactly the same (fixed) every run
-random.seed(25)
+random.seed(42)
 
 if sys.version_info[0] == 2:
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)  # flush print output immediately
@@ -90,7 +90,7 @@ def draw_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4, random_placement=T
     return gen
 
 # Generate a FIXED dense forest of 40 mixed Oak/Birch trees in a 40x40 area.
-tree_xml = draw_trees(40, -20, 20, -20, 20, random_placement=True)
+tree_xml = draw_trees(25,-20, 20, -20, 20, random_placement=True)
 
 missionXML = f'''<?xml version="1.0" encoding="UTF-8" ?>
 <Mission xmlns="http://ProjectMalmo.microsoft.com">
