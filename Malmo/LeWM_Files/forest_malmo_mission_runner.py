@@ -10,7 +10,7 @@ import socket
 import random
 
 # FIX: Set a random seed so the "random" forest layout is exactly the same (fixed) every run
-random.seed(42) 
+random.seed(25)
 
 if sys.version_info[0] == 2:
     sys.stdout = os.fdopen(sys.stdout.fileno(), 'w', 0)  # flush print output immediately
@@ -18,75 +18,88 @@ else:
     import functools
     print = functools.partial(print, flush=True)
 
-def draw_tree(x, y, z, r):
+def draw_tree(x, y, z, r, tree_type="oak"):
     gen = ""
+    # Base leaf config
     leaf_br = r # Leaf base radius
     leaf_base_y = y + 2
     leaf_base_height = 2
+    # Upper leaf config
     leaf_ur = 1 # Leaf upper radius
     leaf_upper_y = leaf_base_y + leaf_base_height
     leaf_upper_height = 2
+    
+    # Malmo 1.11.2 block variants for Oak and Birch
+    if tree_type == "birch":
+        log_attr = 'type="log" variant="birch"'
+        leaf_attr = 'type="leaves" variant="birch"'
+    else:
+        log_attr = 'type="log" variant="oak"'
+        leaf_attr = 'type="leaves" variant="oak"'
 
     # Generate trunk
     for dy in range(y, leaf_upper_y + leaf_upper_height // 2):
-        gen += f"<DrawBlock x='{x}' y='{dy}' z='{z}' type='log'/>\n"
+        gen += f'<DrawBlock x="{x}" y="{dy}" z="{z}" {log_attr}/>\n'
 
     # Generate base leaves
-    for dx in range(-leaf_br, leaf_br + 1):
-        for dz in range(-leaf_br, leaf_br + 1):
-            for dy in range(leaf_base_y, leaf_base_y + leaf_base_height):
-                if abs(dx) == leaf_br and abs(dz) == leaf_br:
-                    continue # Trim corners for rounder look
-                gen += f"<DrawBlock x='{x+dx}' y='{dy}' z='{z+dz}' type='leaves'/>\n"
-
+    gen += f'<DrawCuboid x1="{x-r}" y1="{leaf_base_y}" z1="{z-r}" x2="{x+r}" y2="{leaf_base_y+leaf_base_height-1}" z2="{z+r}" {leaf_attr}/>\n'
+    
     # Generate upper leaves
-    for dx in range(-leaf_ur, leaf_ur + 1):
-        for dz in range(-leaf_ur, leaf_ur + 1):
-            for dy in range(leaf_upper_y, leaf_upper_y + leaf_upper_height):
-                gen += f"<DrawBlock x='{x+dx}' y='{dy}' z='{z+dz}' type='leaves'/>\n"
-                
+    gen += f'<DrawCuboid x1="{x-leaf_ur}" y1="{leaf_upper_y}" z1="{z-leaf_ur}" x2="{x+leaf_ur}" y2="{leaf_upper_y+leaf_upper_height-1}" z2="{z+leaf_ur}" {leaf_attr}/>\n'
+    
+    # Trim base leaves corners
+    for i in range(leaf_base_y, leaf_base_y+leaf_base_height):
+        gen += f'<DrawBlock x="{x-r}" y="{i}" z="{z-r}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x+r}" y="{i}" z="{z-r}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x-r}" y="{i}" z="{z+r}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x+r}" y="{i}" z="{z+r}" type="air"/>\n'
+        
+    # Trim upper leaves corners
+    for i in range(leaf_upper_y+1, leaf_upper_y+leaf_upper_height):
+        gen += f'<DrawBlock x="{x-leaf_ur}" y="{i}" z="{z-leaf_ur}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x+leaf_ur}" y="{i}" z="{z-leaf_ur}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x-leaf_ur}" y="{i}" z="{z+leaf_ur}" type="air"/>\n'
+        gen += f'<DrawBlock x="{x+leaf_ur}" y="{i}" z="{z+leaf_ur}" type="air"/>\n'
+
     return gen
 
-def draw_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4, random_placement=True, border=False):
+def draw_trees(num_trees, xmin, xmax, zmin, zmax, ground_y=4, random_placement=True):
     gen = ""
     tree_radius = 2
     
-    # If configured, add border to restrict environment
-    if border:
-        # FIX: Use BEDROCK so the agent cannot break the walls and escape
-        gen += f"<DrawCuboid x1='{xmin}' y1='{ground_y}' z1='{zmin}' x2='{xmax}' y2='{ground_y+4}' z2='{zmin}' type='bedrock'/>\n"
-        gen += f"<DrawCuboid x1='{xmin}' y1='{ground_y}' z1='{zmax}' x2='{xmax}' y2='{ground_y+4}' z2='{zmax}' type='bedrock'/>\n"
-        gen += f"<DrawCuboid x1='{xmin}' y1='{ground_y}' z1='{zmin}' x2='{xmin}' y2='{ground_y+4}' z2='{zmax}' type='bedrock'/>\n"
-        gen += f"<DrawCuboid x1='{xmax}' y1='{ground_y}' z1='{zmin}' x2='{xmax}' y2='{ground_y+4}' z2='{zmax}' type='bedrock'/>\n"
+    # Clear original trees (SUPERFLAT ONLY)
+    gen += f'<DrawCuboid x1="{xmin}" y1="{ground_y}" z1="{zmin}" x2="{xmax}" y2="{ground_y+10}" z2="{zmax}" type="air"/>\n'
+    
+    # BORDER REMOVED - Just air as requested
 
     if random_placement:
         for _ in range(num_trees):
-            # Ensure trees don't spawn inside the bedrock walls
-            x = random.randint(xmin + tree_radius + 1, xmax - tree_radius - 1)
-            z = random.randint(zmin + tree_radius + 1, zmax - tree_radius - 1)
-            gen += draw_tree(x, ground_y, z, tree_radius)
+            x = random.randint(xmin + tree_radius, xmax - tree_radius)
+            z = random.randint(zmin + tree_radius, zmax - tree_radius)
+            # Randomly choose between birch and oak for a mixed forest
+            tree_type = random.choice(["oak", "birch"])
+            gen += draw_tree(x, ground_y, z, tree_radius, tree_type)
     else:
         trees_placed = 0
-        for x in range(xmax - 1, xmin, -1 * (2 * tree_radius + 1 + 1)):
-            for z in range(zmax - 1, zmin, -1 * (2 * tree_radius + 1 + 1)):
+        for x in range(xmax-1, xmin, -1 * (2 * tree_radius + 1 + 1)):
+            for z in range(zmax-1, zmin, -1 * (2 * tree_radius + 1 + 1)):
                 if trees_placed < num_trees:
-                    gen += draw_tree(x, ground_y, z, tree_radius)
+                    tree_type = random.choice(["oak", "birch"])
+                    gen += draw_tree(x, ground_y, z, tree_radius, tree_type)
                     trees_placed += 1
     return gen
 
-# Generate a FIXED dense forest of 40 trees in a 40x40 area.
-# random.seed(42) at the top ensures this layout is identical on every run.
-tree_xml = draw_trees(40, -20, 20, -20, 20, random_placement=True, border=True)
+# Generate a FIXED dense forest of 40 mixed Oak/Birch trees in a 40x40 area.
+tree_xml = draw_trees(40, -20, 20, -20, 20, random_placement=True)
 
-# Reconstructed XML (The raw github link stripped the < > tags)
 missionXML = f'''<?xml version="1.0" encoding="UTF-8" ?>
 <Mission xmlns="http://ProjectMalmo.microsoft.com">
     <About>
-        <Summary>Fixed Forest VoE Test</Summary>
+        <Summary>Fixed Mixed Forest VoE Test (No Borders)</Summary>
     </About>
     <ServerSection>
         <ServerHandlers>
-            <FlatWorldGenerator generatorString="3;7,2*3,2;1;"/>
+            <FlatWorldGenerator generatorString="3;7,2*3,2;1;" forceReset="true"/>
             <DrawingDecorator>
                 {tree_xml}
             </DrawingDecorator>
