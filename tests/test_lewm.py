@@ -54,7 +54,9 @@ def test_batch_embeddings_distribution(vit):
     """test that the vision transformer outputs evenly distributed"""
     # model.eval()
 
-    dataset_h5 = repo_path("data/mineRL_training.h5")
+    with initialize(version_base=None, config_path="../config"):
+        cfg = compose(config_name="lewm")
+    dataset_h5 = repo_path(cfg.paths.data_dir, "mineRL_training.h5")
     with h5py.File(dataset_h5, "r") as f:
         # get pixels (observations). shape: (453496, 64, 64, 3)
         # get first 50 observations
@@ -79,7 +81,9 @@ def test_predictor_output(predictor, vit):
     """test that the predictor outputs the correct next observation embedding"""
     # model.eval()
 
-    dataset_h5 = repo_path("data/mineRL_training.h5")
+    with initialize(version_base=None, config_path="../config"):
+        cfg = compose(config_name="lewm")
+    dataset_h5 = repo_path(cfg.paths.data_dir, "mineRL_training.h5")
     with h5py.File(dataset_h5, "r") as f:
         # test on 8 consecutive observations to match history length
         # include 1 extra representing the next observation to target for prediction

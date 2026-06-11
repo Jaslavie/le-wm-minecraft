@@ -2,6 +2,8 @@ import numpy as np
 import torch
 import h5py
 
+from lewm.models.lewm import LeWM
+
 def normalize_camera(action_t, cam_mean, cam_std):
     """
     turns raw camera trajectories to z-normalized numbers for training stability
@@ -69,3 +71,30 @@ def normalize_columns(dataset:str, col: int, target_col: str):
         return sample
     
     return transform
+
+def load_trained_lewm(cfg, checkpoint, device=None):
+    lewm_model = LeWM(
+        image_size=cfg.vit.image_size,
+        patch_size=cfg.vit.patch_size,
+        embedding_dim=cfg.vit.embedding_dim,
+        num_channels=cfg.vit.num_channels,
+        num_patches=cfg.vit.num_patches,
+        vit_attention_heads=cfg.vit.attention_heads,
+        vit_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
+        vit_transformer_blocks=cfg.vit.transformer_blocks,
+        predictor_attention_heads=cfg.predictor.attention_heads,
+        predictor_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
+        predictor_transformer_blocks=cfg.predictor.transformer_blocks,
+        action_dim=cfg.action_dim,
+        dropout=cfg.predictor.dropout,
+        history_len=cfg.predictor.history_len,
+        num_proj=cfg.sigreg.num_proj,
+        factor=cfg.sigreg.factor,
+        phi=cfg.sigreg.phi,
+    )
+    lewm_model.load_state_dict(checkpoint["model_state_dict"])
+    lewm_model.eval()
+    if device is not None:
+        lewm_model = lewm_model.to(device)
+
+    return lewm_model

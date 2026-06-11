@@ -1,7 +1,7 @@
 import os,sys
 repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, os.path.join(repo_root, "src"))
-from lewm.data.utils import normalize_columns
+from lewm.utils import normalize_columns
 from lewm.models.lewm import LeWM, compute_loss
 from lewm.paths import repo_path
 import hydra
@@ -41,7 +41,7 @@ def train_model(cfg: DictConfig):
     print(f"using device {device}")
 
     # load and normalize original dataset
-    dataset_path = repo_path(cfg.paths.dataset_h5)
+    dataset_path = repo_path(cfg.paths.data_dir, "mineRL_training.h5")
     ds = swm.data.HDF5Dataset(path=str(dataset_path))
 
     normalizer = normalize_columns(

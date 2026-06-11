@@ -17,13 +17,11 @@ if __name__ == "__main__":
 
 import matplotlib.pyplot as plt
 from torchvision import transforms
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import OmegaConf
 
-from lewm.models.lewm import LeWM
 from lewm.planning.planner import Planner
-from lewm.data.utils import get_cam_mean_std
 from lewm.paths import repo_path
-from lewm.data.utils import planner_output_to_actions
+from lewm.utils import get_cam_mean_std, load_trained_lewm, planner_output_to_actions
 
 def bytes_to_image(frame):
     image = np.frombuffer(frame, dtype=np.uint8)
@@ -31,31 +29,6 @@ def bytes_to_image(frame):
     image = Image.fromarray(image)
 
     return image
-
-def load_trained_lewm(cfg: DictConfig, checkpoint):
-    lewm_model = LeWM(
-        image_size=cfg.vit.image_size,
-        patch_size=cfg.vit.patch_size,
-        embedding_dim=cfg.vit.embedding_dim,
-        num_channels=cfg.vit.num_channels,
-        num_patches=cfg.vit.num_patches,
-        vit_attention_heads=cfg.vit.attention_heads,
-        vit_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
-        vit_transformer_blocks=cfg.vit.transformer_blocks,
-        predictor_attention_heads=cfg.predictor.attention_heads,
-        predictor_mlp_hidden_nodes=cfg.vit.mlp_hidden_nodes,
-        predictor_transformer_blocks=cfg.predictor.transformer_blocks,
-        action_dim=cfg.action_dim,
-        dropout=cfg.predictor.dropout,
-        history_len=cfg.predictor.history_len,
-        num_proj=cfg.sigreg.num_proj,
-        factor=cfg.sigreg.factor,
-        phi=cfg.sigreg.phi,
-    )
-    lewm_model.load_state_dict(checkpoint["model_state_dict"])
-    lewm_model.eval()
-
-    return lewm_model
 
 def process_frame_pixels(transform, frame):
     """resizes raw malmo frame to 64x64"""
@@ -105,7 +78,7 @@ def run_inference(
     checkpoint = torch.load(Path(model_path), map_location="cpu") # Allow model selection for evals
 
     # load camera mean and std
-    cam_mean, cam_std = get_cam_mean_std(str(repo_path(cfg.paths.dataset_h5)))
+    cam_mean, cam_std = get_cam_mean_std(str(repo_path(cfg.paths.data_dir, "mineRL_training.h5")))
     
     transform = transforms.Compose([
         transforms.Resize((cfg.vit.image_size, cfg.vit.image_size)),
@@ -130,7 +103,7 @@ def run_inference(
         else "cpu"
     )
     # Initialize models
-    lewm_model = load_trained_lewm(cfg, checkpoint).to(device)
+    lewm_model = load_trained_lewm(cfg, checkpoint, device)
 
     @torch.no_grad()
     def enc(obs):

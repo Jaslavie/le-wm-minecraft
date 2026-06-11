@@ -2,7 +2,7 @@
 <Mission xmlns="http://ProjectMalmo.microsoft.com" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
   <About>
-    <Summary>Multi-tree navigation test: repeated tree targets in a superflat world for NAV to CHOP to NAV control.</Summary>
+    <Summary>Multi-tree navigation test: oak and birch trees spaced across a superflat world.</Summary>
   </About>
 
   <ServerSection>
@@ -23,22 +23,22 @@
         <DrawCuboid x1="-2" y1="8" z1="13" x2="2" y2="9" z2="17" type="leaves" variant="oak"/>
         <DrawCuboid x1="-1" y1="10" z1="14" x2="1" y2="10" z2="16" type="leaves" variant="oak"/>
 
-        <!-- Birch target left-front at (x=-7, z=12). -->
+        <!-- Birch distractor left-front at (x=-7, z=12). -->
         <DrawCuboid x1="-7" y1="4" z1="12" x2="-7" y2="7" z2="12" type="log" variant="birch"/>
         <DrawCuboid x1="-9" y1="8" z1="10" x2="-5" y2="9" z2="14" type="leaves" variant="birch"/>
         <DrawCuboid x1="-8" y1="10" z1="11" x2="-6" y2="10" z2="13" type="leaves" variant="birch"/>
 
-        <!-- Oak target right-front at (x=6, z=18). -->
+        <!-- Oak distractor right-front at (x=6, z=18). -->
         <DrawCuboid x1="6" y1="4" z1="18" x2="6" y2="7" z2="18" type="log" variant="oak"/>
         <DrawCuboid x1="4" y1="8" z1="16" x2="8" y2="9" z2="20" type="leaves" variant="oak"/>
         <DrawCuboid x1="5" y1="10" z1="17" x2="7" y2="10" z2="19" type="leaves" variant="oak"/>
 
-        <!-- Birch target deeper right at (x=3, z=25). -->
+        <!-- Birch distractor deeper right at (x=3, z=25). -->
         <DrawCuboid x1="3" y1="4" z1="25" x2="3" y2="7" z2="25" type="log" variant="birch"/>
         <DrawCuboid x1="1" y1="8" z1="23" x2="5" y2="9" z2="27" type="leaves" variant="birch"/>
         <DrawCuboid x1="2" y1="10" z1="24" x2="4" y2="10" z2="26" type="leaves" variant="birch"/>
 
-        <!-- Oak target deeper left at (x=-10, z=23). -->
+        <!-- Oak distractor deeper left at (x=-10, z=23). -->
         <DrawCuboid x1="-10" y1="4" z1="23" x2="-10" y2="7" z2="23" type="log" variant="oak"/>
         <DrawCuboid x1="-12" y1="8" z1="21" x2="-8" y2="9" z2="25" type="leaves" variant="oak"/>
         <DrawCuboid x1="-11" y1="10" z1="22" x2="-9" y2="10" z2="24" type="leaves" variant="oak"/>
@@ -50,8 +50,13 @@
   <AgentSection mode="Survival">
     <Name>TreeBot</Name>
     <AgentStart>
-      <!-- Fixed spawn at origin facing +Z (yaw=0), level pitch, so the first tree is centered ahead at start. -->
+      <!-- Fixed spawn at origin facing +Z, with multiple trees spread ahead. -->
       <Placement x="0.5" y="4.0" z="0.5" yaw="0" pitch="0"/>
+      <!-- Diamond axe so a reached trunk can actually be broken in a few attack
+           ticks (bare hands take ~60). Navigation/aim is still the model's job. -->
+      <Inventory>
+        <InventoryItem slot="0" type="diamond_axe"/>
+      </Inventory>
     </AgentStart>
     <AgentHandlers>
       <VideoProducer want_depth="false">
@@ -59,6 +64,15 @@
         <Height>64</Height>
       </VideoProducer>
       <ObservationFromFullStats/>
+      <ObservationFromFullInventory/>
+      <!-- Ground-truth tree state: trunk blocks (y=5,6) across the whole cluster.
+           A tree is "felled" when its trunk cell becomes air (broken in the world). -->
+      <ObservationFromGrid>
+        <Grid name="trunks" absoluteCoords="true">
+          <min x="-12" y="5" z="10"/>
+          <max x="8" y="6" z="26"/>
+        </Grid>
+      </ObservationFromGrid>
       <ContinuousMovementCommands turnSpeedDegs="180"/>
     </AgentHandlers>
   </AgentSection>

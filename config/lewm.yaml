@@ -5,17 +5,21 @@ config_name: ${hydra:job.name}
 
 paths:
   data_dir: data
-  dataset_h5: data/mineRL_training.h5
   checkpoint_dir: artifacts/checkpoints
+  fixtures_dir: artifacts/fixtures
+  logs_dir: artifacts/charts
+  final_models_dir: artifacts/final_models
+  evals_dir: artifacts/evals
+  
   best_model: artifacts/checkpoints/best_model.pt
   latest_model: artifacts/checkpoints/latest_model.pt
-  fixtures_dir: artifacts/fixtures
 
+  # goal frames
   nav_goal_frame: artifacts/fixtures/goal_tree_nav.pkl
   chop_goal_frame: artifacts/fixtures/goal_tree_chop.pkl
-  
-  video_frames: artifacts/fixtures/video_frames.pkl
-  logs_dir: artifacts/charts
+
+  # evals
+  probe_data: data/probe_evals
 
 checkpoint_path: ${paths.checkpoint_dir}
 model_path: ${paths.latest_model}
@@ -62,6 +66,11 @@ predictor:
 optimizer:
   lr: 5e-5
   weight_decay: 1e-3
+
+# == Probe hyperparameters ==
+probe:
+  epochs: 10
+  batch_size: 128
 
 # == Planner hyperparameters ==
 planner:
