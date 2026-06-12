@@ -74,6 +74,7 @@
         </Grid>
       </ObservationFromGrid>
       <ContinuousMovementCommands turnSpeedDegs="180"/>
+      <MissionQuitCommands/>
     </AgentHandlers>
   </AgentSection>
 

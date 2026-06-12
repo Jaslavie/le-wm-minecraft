@@ -52,16 +52,22 @@ def run_inference(
     model_path: str,
     env_name: str,
     use_wandb: bool = True,
+    eval_mode: bool = False,
 ):
     """
     model_path: path to the trained LeWM model checkpoint
     env_name: name of Malmo sandbox environment to test on
     use_wandb: whether to use wandb for logging
-    
+    eval_mode: strip wandb/plotting/frame-saving and return per-episode status.
+
     Returns:
-        path to the MSE dashboard image
-        None if wandb is used
+        eval_mode -> dict with status and success metrics
+        use_wandb -> None
+        otherwise -> path to the MSE dashboard image
     """
+    # eval mode never logs to wandb
+    if eval_mode:
+        use_wandb = False
     # load environment configuration
     cfg = OmegaConf.load(repo_path("config", "lewm.yaml"))
     env_cfg = cfg.env.configs[env_name]
@@ -103,8 +109,8 @@ def run_inference(
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
-    # Initialize models
-    lewm_model = load_trained_lewm(cfg, checkpoint, device)
+    # Initialize models (strict=False tolerates checkpoints without the inverse-dynamics head)
+    lewm_model = load_trained_lewm(cfg, checkpoint, device, strict=False)
 
     @torch.no_grad()
     def enc(obs):
@@ -140,7 +146,9 @@ def run_inference(
 
     # initialize planning parameters
     step = 0
-    cycle_times = []
+    planning_times = []
+    planning_time_steps = []
+    last_planning_time = None
     action_queue = []
     planning_losses = None
     frames = []
@@ -149,6 +157,10 @@ def run_inference(
     distance_by_step = []
     # initialize warm start for first plan
     last_distribution_params = None
+    # episode is a success if the agent ever reaches the target distance
+    episode_success = False
+    # eval-mode telemetry (unused by the deployment path)
+    min_distance = float("inf")
     chop_done_ct = 0
     chop_stage_steps = 0
     # Neutral action so Malmo does not keep moving during long CEM replans.
@@ -166,7 +178,6 @@ def run_inference(
         not failed
         and step < cfg.planner.max_steps # reached max steps
     ):
-        start = time.perf_counter()
         # Receive frame
         frame = recvall(client, 64 * 64 * 3)
         if frame is None:
@@ -181,8 +192,15 @@ def run_inference(
         # Objective is to decrease euclidean distance to target
         agent_x = agent_stats.get("x")
         agent_z = agent_stats.get("z")
-        distance_to_tree = float(math.dist((agent_x, agent_z), target_position))
-
+        # a tick can arrive without position stats; treat it as "unknown distance"
+        if agent_x is None or agent_z is None:
+            distance_to_tree = float("inf")
+        else:
+            distance_to_tree = float(math.dist((agent_x, agent_z), target_position))
+            if distance_to_tree < cfg.planner.success_distance:
+                episode_success = True
+            min_distance = min(min_distance, distance_to_tree)
+        
         # Save frames for video creation
         frame_np = np.frombuffer(frame, dtype=np.uint8).reshape(64, 64, 3).copy()
         frames.append(frame_np)
@@ -197,36 +215,26 @@ def run_inference(
             last_distribution_params = None
             chop_done_ct = 0
             chop_stage_steps = 0
-            print("switching to CHOP")
+            print("[CHOP] stage switched to CHOP")
+            print(f"stage-CHOP at step {step}")
 
-        # Switch back to nav after chopping is complete
-        chop_mse = None
+        # Chop success is judged by latent MSE.
         if stage == "CHOP":
             chop_stage_steps += 1
-            # Check that curr observation is close enough to the chop goal latent
-            with torch.no_grad():
-                chop_mse = F.mse_loss(enc(obs), chop_goal_z).item()
-            if chop_mse < cfg.planner.chop_done_mse:
+            current_chop_mse = F.mse_loss(enc(obs), chop_goal_z).item()
+            if current_chop_mse < cfg.planner.chop_done_mse:
                 chop_done_ct += 1
             else:
                 chop_done_ct = 0
-            # Bot needs consecutive MSEs below the threshold to consider 
-            # chopping complete
-            chop_done_by_mse = chop_done_ct >= cfg.planner.chop_done_patience
-            chop_complete = (
-                chop_done_by_mse
+            if (
+                chop_done_ct >= cfg.planner.chop_done_patience
                 or chop_stage_steps >= cfg.planner.chop_max_steps
-            )
-            # Update target if there are multiple trees and turn state back to nav
-            if chop_complete:
-                target_idx = (target_idx + 1) % len(target_positions)
-                target_position = target_positions[target_idx]
-                stage = "NAV"
-                action_queue = []
-                last_distribution_params = None
-                chop_done_ct = 0
-                chop_stage_steps = 0
-                print("switching to NAV")
+            ):
+                stage = "SUCCESS"
+
+        if stage == "SUCCESS":
+            print(f"stage-SUCCESS at step {step}")
+            break
 
         # Plan when action queue is empty
         if not action_queue:
@@ -251,9 +259,13 @@ def run_inference(
             
             # Planner embeds obs with vit in its pipeline
             active_goal_obs = chop_goal_obs if stage == "CHOP" else goal_obs
+            planning_start = time.perf_counter()
             action_sequence, planning_losses, distribution_params = planner.planner(
-                lewm_model, obs, active_goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start
+                lewm_model, obs, active_goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start=warm_start
             )
+            last_planning_time = time.perf_counter() - planning_start
+            planning_times.append(last_planning_time)
+            planning_time_steps.append(step)
             current_goal_mse = planning_losses["current_goal_mse"]
             # update warm start for next plan
             last_distribution_params = distribution_params
@@ -263,19 +275,22 @@ def run_inference(
             # append stop action to queue to prevent movement during long replans
             action_queue.append(stop_action.copy())
 
-            print(f"finished planning: action_sequence={action_sequence.shape}, queue={len(action_queue)}")
+            print(
+                f"[{stage}] "
+                f"planning_time={last_planning_time:.4f}s "
+                f"selected_action={action_queue[0]} "
+                f"mse_final={planning_losses['final_goal_mse']:.4f} "
+            )
         else:
             current_goal_mse = planning_losses["current_goal_mse"]
 
         # Execute first action
         action_to_take = action_queue.pop(0)
-        print(f"Current action: {action_to_take} ({len(action_queue)} left in plan)")
+        if stage == "CHOP":
+            action_to_take[7] = 1.0
 
         # Collect metrics
-        cycle_time = time.perf_counter() - start
-        cycle_times.append(cycle_time)
         step += 1
-        print(f"Finished step {step} / {cfg.planner.max_steps} | Runtime: {cycle_time:.4f} seconds")
 
         # W&B logs
         if use_wandb:
@@ -289,8 +304,8 @@ def run_inference(
                 "control/target_name": target_name,
                 "control/task_success_latent_mse": current_goal_mse,
 
-                "planning/cycle_time": cycle_time, # time to plan and execute action
-                "planning/avg_cycle_time": sum(cycle_times) / len(cycle_times),
+                "planning/planning_time": last_planning_time,
+                "planning/avg_planning_time": sum(planning_times) / len(planning_times),
                 # Videos
                 "planning/rollout_video": wandb.Video(
                     np.transpose(np.array(frames, dtype=np.uint8), (0, 3, 1, 2)),
@@ -306,16 +321,13 @@ def run_inference(
             metrics["control/at_target_distance"] = float(
                 distance_to_tree < cfg.planner.success_distance
             )
-            if chop_mse is not None:
-                metrics["planning/chop_mse"] = chop_mse
-                metrics["planning/chop_stage_steps"] = chop_stage_steps
 
-            # Plot planner objective and runtime.
+            # Plot planner objective and planning runtime.
             fig, (ax1, ax2) = plt.subplots(1, 2)
             ax1.plot(current_goal_mse, label="Latent distance to goal")
             ax1.legend()
-            ax2.plot(cycle_times, label="cycle")
-            ax2.plot([sum(cycle_times[:i]) / i for i in range(1, len(cycle_times) + 1)], label="avg")
+            ax2.plot(planning_times, label="planning")
+            ax2.plot([sum(planning_times[:i]) / i for i in range(1, len(planning_times) + 1)], label="avg")
             ax2.legend()
             metrics["planning/dashboard"] = wandb.Image(fig)
             wandb.log(metrics, step=step)
@@ -329,14 +341,33 @@ def run_inference(
         # Send actions to Malmo to perform
         client.sendall(pickle.dumps(action_to_take.tolist()))
 
-    # Save rollout frames for video creation
-    rollout_frames_path = repo_path(cfg.paths.fixtures_dir, "rollout_frames.pkl")
-    rollout_frames_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(rollout_frames_path, "wb") as file:
-        pickle.dump(frames, file)
-    print(f"Saved rollout frames to {rollout_frames_path}")
+    # Save rollout frames for video creation (skipped in eval mode for speed)
+    if not eval_mode:
+        rollout_frames_path = repo_path(cfg.paths.fixtures_dir, "rollout_frames.pkl")
+        rollout_frames_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(rollout_frames_path, "wb") as file:
+            pickle.dump(frames, file)
+        print(f"Saved rollout frames to {rollout_frames_path}")
 
     client.close()
+    if planning_times:
+        avg_planning_time = sum(planning_times) / len(planning_times)
+        print(
+            f"Average planning runtime: {avg_planning_time:.4f}s "
+            f"over {len(planning_times)} planning session(s)"
+        )
+
+    # eval mode: return per-episode result dict, skip dashboard/plotting
+    if eval_mode:
+        return {
+            "status": stage,
+            # success criteria
+            "nav_success": stage in ("CHOP", "SUCCESS"),
+            "chop_success": stage == "SUCCESS",
+            "min_distance": None if min_distance == float("inf") else round(min_distance, 3),
+            "steps": step,
+            "avg_planning_time": avg_planning_time if planning_times else None,
+        }
 
     # Close wandb or upload metrics
     if use_wandb:
@@ -360,12 +391,13 @@ def run_inference(
         ax2.set_title("Real distance to tree")
         ax2.legend()
 
-        ax3.plot(metric_steps, cycle_times, marker="o", label="Cycle time")
-        ax3.plot(
-            metric_steps,
-            [sum(cycle_times[:i]) / i for i in range(1, len(cycle_times) + 1)],
-            label="Average cycle time",
-        )
+        if planning_times:
+            ax3.plot(planning_time_steps, planning_times, marker="o", label="Planning time")
+            ax3.plot(
+                planning_time_steps,
+                [sum(planning_times[:i]) / i for i in range(1, len(planning_times) + 1)],
+                label="Average planning time",
+            )
         ax3.set_xlabel("Planning step")
         ax3.set_ylabel("Seconds")
         ax3.set_title("Planning runtime")
@@ -375,10 +407,37 @@ def run_inference(
         plt.close(fig)
         return str(output_path)
 
+def run_evals(model_path, env_name, n_episodes=100):
+    """
+    Run n_episodes rollouts sequentially (single Malmo server -> one socket, so
+    episodes can't truly run in parallel) with wandb/plotting disabled, then
+    print and return the success ratio.
+    """
+    successes = 0
+    for ep in range(n_episodes):
+        success = run_inference(model_path, env_name, eval_mode=True)["nav_success"]
+        successes += int(success)
+        print(f"[eval] episode {ep + 1}/{n_episodes} | success={success} | running ratio={successes / (ep + 1):.3f}")
+    ratio = successes / n_episodes
+    print(f"[eval] final success ratio: {successes}/{n_episodes} = {ratio:.3f}")
+    return ratio
+
 if __name__ == "__main__":
-    run_inference(
-        # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),
-        model_path=repo_path("artifacts", "final_models", "best_model_resnet_invdyn.pt"),
-        use_wandb=True,
-        env_name=os.environ.get("LEWM_ENV", "multi_tree_navigation"),
-    )
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--evals", action="store_true", help="Run an eval suite (no wandb) and report the success ratio")
+    parser.add_argument("--episodes", type=int, default=10, help="Number of episodes for --evals")
+    args = parser.parse_args()
+
+    # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),
+    model_path = repo_path("artifacts", "final_models", "best_model_resnet_invdyn.pt")
+    env_name = os.environ.get("LEWM_ENV", "single_tree_navigation")
+
+    if args.evals:
+        run_evals(model_path, env_name, n_episodes=args.episodes)
+    else:
+        run_inference(
+            model_path=model_path,
+            use_wandb=True,
+            env_name=env_name,
+        )

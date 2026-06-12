@@ -39,7 +39,14 @@
         <Height>64</Height>
       </VideoProducer>
       <ObservationFromFullStats/>
+      <ObservationFromGrid>
+        <Grid name="trunks" absoluteCoords="true">
+          <min x="0" y="4" z="15"/>
+          <max x="0" y="6" z="15"/>
+        </Grid>
+      </ObservationFromGrid>
       <ContinuousMovementCommands turnSpeedDegs="180"/>
+      <MissionQuitCommands/>
     </AgentHandlers>
   </AgentSection>
 

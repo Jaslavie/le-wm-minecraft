@@ -54,7 +54,7 @@ def process_LeWM_action(action_list, current):
     #     instructions.append("crouch {0}".format(action_list[5]))
 
     if current[7] != action_list[7]:
-        instructions.append("attack {0}".format(action_list[7]))
+        instructions.append("attack {0}".format(int(action_list[7])))
 
     # Camera disabled for fixed-view navigation ablation.
     # if action_list[8] != current[8]:
