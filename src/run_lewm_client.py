@@ -129,6 +129,7 @@ def run_inference(
     # We use this to determine if chopping is complete by computing the latent MSE
     with torch.no_grad():
         chop_goal_z = enc(chop_goal_obs)
+        goal_z = enc(goal_obs)
 
     # Initialize logging directory
     logs_dir = repo_path(cfg.paths.logs_dir)
@@ -209,7 +210,8 @@ def run_inference(
         obs = process_frame_pixels(transform, frame)
 
         # Switch stage from nav to chop when close enough to the current tree target
-        if stage == "NAV" and distance_to_tree < cfg.planner.success_distance:
+        # if stage == "NAV" and distance_to_tree < cfg.planner.success_distance:
+        if stage == "NAV" and F.mse_loss(enc(obs), goal_z).item() < cfg.planner.nav_done_mse:
             stage = "CHOP"
             action_queue = []
             last_distribution_params = None
@@ -234,6 +236,7 @@ def run_inference(
 
         if stage == "SUCCESS":
             print(f"stage-SUCCESS at step {step}")
+            # stage = "NAV"
             break
 
         # Plan when action queue is empty

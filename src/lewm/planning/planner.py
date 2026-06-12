@@ -60,7 +60,7 @@ class Planner:
             else "mps" if torch.backends.mps.is_available()
             else "cpu"
         )
-        print(device)
+        # print(device)
         obs = obs.to(device)
         obs_goal = obs_goal.to(device)
         lewm.to(device)

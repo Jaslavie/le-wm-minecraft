@@ -78,7 +78,7 @@ benchmark:
     - random
     - lewm_no_invdyn
     - lewm_invdyn
-  episodes: 20
+  episodes: 3
   env: single_tree_navigation
   host: localhost
   port: 25565
@@ -97,6 +97,7 @@ planner:
   max_steps: 200
   success_threshold: 0.5 # success threshold for each goal
   success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
+  nav_done_mse: 1.0
   chop_done_mse: 0.05 # latent MSE threshold to determine if chopping is complete
   chop_done_patience: 3 # consecutive low-MSE steps before chop is complete
   chop_max_steps: 15 # always advance after this number of chop steps
@@ -104,10 +105,6 @@ planner:
 # == Malmo env/task settings ==
 env:
   configs:
-    seed_world:
-      xml: Malmo/py27/environments/seed_world.xml
-      target_name: oak_tree
-      target_position: [0.0, 15.0]
     discrimination_test:
       xml: Malmo/py27/environments/discrimination_test.xml
       target_name: oak_tree
