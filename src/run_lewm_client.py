@@ -22,6 +22,7 @@ from omegaconf import OmegaConf
 from lewm.planning.planner import Planner
 from lewm.paths import repo_path
 from lewm.utils import get_cam_mean_std, load_trained_lewm, planner_output_to_actions
+from lewm.models import LeWM
 
 def bytes_to_image(frame):
     image = np.frombuffer(frame, dtype=np.uint8)
@@ -251,7 +252,7 @@ def run_inference(
             # Planner embeds obs with vit in its pipeline
             active_goal_obs = chop_goal_obs if stage == "CHOP" else goal_obs
             action_sequence, planning_losses, distribution_params = planner.planner(
-                lewm_model, obs, active_goal_obs, cam_mean, cam_std, device, cfg.sigreg.lambd, warm_start=warm_start
+                lewm_model, obs, active_goal_obs, cam_mean, cam_std, cfg.sigreg.lambd, warm_start
             )
             current_goal_mse = planning_losses["current_goal_mse"]
             # update warm start for next plan
