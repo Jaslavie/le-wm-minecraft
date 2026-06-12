@@ -72,6 +72,21 @@ probe:
   epochs: 10
   batch_size: 128
 
+# == Benchmark settings ==
+benchmark:
+  agents:
+    - random
+    - lewm_no_invdyn
+    - lewm_invdyn
+  episodes: 20
+  env: single_tree_navigation
+  host: localhost
+  port: 25565
+  connect_timeout: 120
+  models:
+    no_invdyn: artifacts/final_models/best_model_resnet.pt
+    invdyn: artifacts/final_models/best_model_resnet_invdyn.pt
+
 # == Planner hyperparameters ==
 planner:
   max_iter: 10
@@ -83,12 +98,16 @@ planner:
   success_threshold: 0.5 # success threshold for each goal
   success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
   chop_done_mse: 0.05 # latent MSE threshold to determine if chopping is complete
-  chop_done_patience: 3 # consecutive low-MSE steps before CHOP is complete
-  chop_max_steps: 15 # always advance after this many CHOP steps
+  chop_done_patience: 3 # consecutive low-MSE steps before chop is complete
+  chop_max_steps: 15 # always advance after this number of chop steps
 
 # == Malmo env/task settings ==
 env:
   configs:
+    seed_world:
+      xml: Malmo/py27/environments/seed_world.xml
+      target_name: oak_tree
+      target_position: [0.0, 15.0]
     discrimination_test:
       xml: Malmo/py27/environments/discrimination_test.xml
       target_name: oak_tree
