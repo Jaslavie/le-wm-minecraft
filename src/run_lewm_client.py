@@ -110,7 +110,7 @@ def run_inference(
         else "cpu"
     )
     # Initialize models (strict=False tolerates checkpoints without the inverse-dynamics head)
-    lewm_model = load_trained_lewm(cfg, checkpoint, device, strict=False)
+    lewm_model = load_trained_lewm(cfg, checkpoint, device)#, strict=False)
 
     @torch.no_grad()
     def enc(obs):
@@ -431,7 +431,7 @@ if __name__ == "__main__":
 
     # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),
     model_path = repo_path("artifacts", "final_models", "best_model_resnet_invdyn.pt")
-    env_name = os.environ.get("LEWM_ENV", "single_tree_navigation")
+    env_name = os.environ.get("LEWM_ENV", "seed_world")
 
     if args.evals:
         run_evals(model_path, env_name, n_episodes=args.episodes)

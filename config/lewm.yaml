@@ -103,8 +103,12 @@ env:
       target_position: [0.0, 15.0]
     seed_world:
       xml: Malmo/py27/environments/single_raised_tree_navigation.xml
-      target_name: oak_tree
-      target_position: [173.0, 234.0]
+      # Oak tree
+      target_name: oak_tree #oak_tree
+      target_position: [173.0, 234.0] # [166.0, 234.0]
+      # # Birch tree
+      # target_name: birch_tree
+      # target_position: [166.0, 234.0]
     multi_tree_navigation:
       xml: Malmo/py27/environments/multi_tree_navigation.xml
       target_name: oak_tree
