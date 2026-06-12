@@ -32,6 +32,7 @@
       </VideoProducer>
       <ObservationFromFullStats/>
       <ContinuousMovementCommands turnSpeedDegs="180"/>
+      <MissionQuitCommands/>
     </AgentHandlers>
   </AgentSection>
 
