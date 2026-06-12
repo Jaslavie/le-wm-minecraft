@@ -1,10 +1,10 @@
-# LeWorldModel (LeWM) for Minecraft
+# LeWorldModel (LeWM) for Minecraft - Learning
 
 We adapt LeWorldModel (LeWM) to perform simple Minecraft tasks, beginning with tree-chopping, using the Malmo sandbox environment.
 
 Minecraft by nature of its 3D design is more noisy than the primarily 2D and 3rd person POV tasks presented in the paper. This introduces new challenges with grounding the model in Minecraft physics.
 
-![LeWM Minecraft architecture](artifacts/images/lewm_minecraft_architecture_diagram.png)
+LeWM Minecraft architecture
 
 Training data: [https://zenodo.org/records/12659939](https://zenodo.org/records/12659939)
 
@@ -14,6 +14,10 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 
 - [Getting started](#getting-started)
 - [Project structure](#project-structure)
+- [Current Art](#current-art)
+  - [Reactive Imitation Models](#reactive-imitation-models)
+  - [Generative Models](#generative-models)
+  - [JEPAs](#jepas)
 - [Architecture](#architecture)
   - [Le World Model](#le-world-model)
   - [Action Embedder](#action-embedder)
@@ -114,9 +118,41 @@ python scripts/run_lewm_client.py
 
 ## Current Art
 
-TBD
+We situate **Le-WM-Minecraft** against three families of visuomotor Minecraft agents
 
-## LeWorldModel Architecture
+
+| Category                   | Model                    | Image size | Parameters | Embedding dim |
+| -------------------------- | ------------------------ | ---------- | ---------- | ------------- |
+| Reactive imitation         | Impala ResNet            | 64×64      | —          | 7200          |
+| Reactive imitation         | ViT-256                  | 256×256    | 8.9M       | 512           |
+| Generative                 | Stable Diffusion 2.1 VAE | 256×256    | 34M        | 4096          |
+| Self-supervised pretrained | DINOv2 ViT-L/14          | 224×224    | 300M       | 1024          |
+| Self-supervised pretrained | LeWM (original)          | 64×64      | 15.0M      | 192           |
+| Self-supervised pretrained | **LeWMMinecraft (ours)** | 64×64      | 15.0M      | 192           |
+
+
+### Reactive Imitation Models
+
+**OpenAI Video Pretraining model** - massive corpus of video training data trained with imitation learning to perform complex tasks. Similarly, they ground hte model using an inverse dynamics model so it can back-produce the actions in the state. However, this architecture does not condition the model on latents to predict the future. Instead, it follows a traditiaonl RL, reward-based policy which is expensive and dependent on human steering.
+
+**Reinforcement Learning** (MineRL) - 
+
+### Generative Models
+
+Unlike LeWM these reconstruct in pixel space which focus resources on spatial details.
+
+**DreamerV3 -** learns a recurrent latent world model and was the first to collect diamonds in Minecraft from scratch  
+**Genie** - and video-diffusion agents generate controllable frames. 
+
+**Stable Diffusion VAE** - 
+
+### Self Supervised Models
+
+**DINO-WM** - 
+
+LeWM belongs to the **self-supervised, joint-embedding predictive** family (I-JEPA, V-JEPA, DINO-WM): instead of reconstructing pixels, the model predicts *future embeddings* in latent space, so the representation keeps only what is predictable and control-relevant. Frozen self-supervised encoders like **DINOv2** are the strongest behavioral-cloning backbones on TreeChop (32%), which motivates pairing a self-supervised representation with a latent world model and planner — the LeWM approach we adapt here.
+
+## LeWorldModel Minecraft Architecture
 
 LeWM is built on the latent joint-embedding predictive architecture (JEPA) trained from MineRL pixels and actions. At a high level:
 
@@ -162,9 +198,7 @@ For a clip of 8 frames, the model asks seven “what comes next?” questions: g
 
 The **Loss function** combines Prediction loss (MSE between predicted and target next embeddings) and SIGReg loss (forces embeddings toward an isotropic Gaussian; see below).
 
-$$
-L_{\text{LeWM}} \triangleq L_{\text{pred}} + \lambda  \text{SIGReg}(Z)
-$$
+$$ L_{\text{LeWM}} \triangleq L_{\text{pred}} + \lambda  \text{SIGReg}(Z) $$
 
 **SigReg** addresses representation collapse: when embeddings oversimplify observations so next-step prediction becomes trivially easy.
 
@@ -216,6 +250,19 @@ timestamp 0 = [1, 1, 0, 0, 0, 0, 0, 0, <pitch>, <yaw>]
 ```
 
 ## Performance
+
+**TreeChop success rate**
+
+
+| Category                   | Model                         | Success rate (%) |
+| -------------------------- | ----------------------------- | ---------------- |
+| Reactive imitation         | Impala ResNet (end-to-end BC) | 4.00 ± 4.00      |
+| Reactive imitation         | ViT-256 (end-to-end BC)       | 24.33 ± 0.94     |
+| Generative                 | Stable Diffusion VAE + BC     | 20.00 ± 5.89     |
+| Self-supervised pretrained | DINOv2 ViT-L/14 + BC          | 32.00 ± 1.63     |
+| Self-supervised pretrained | LeWM (original)               | *TBD*            |
+| Self-supervised pretrained | **LeWMMinecraft (ours)**      | *TBD*            |
+
 
 ## Shape annotation key
 

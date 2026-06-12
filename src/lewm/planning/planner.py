@@ -53,7 +53,6 @@ class Planner:
             mu = warm_start["mu"]
             sigma = warm_start["sigma"]
             p = warm_start["p"]
-        print(f"planner parameters: mu={mu.shape}, sigma={sigma.shape}, p={p.shape}")
 
         # send to gpu if available
         device = torch.device(
@@ -72,16 +71,10 @@ class Planner:
             z1 = lewm.encoder(obs) # current frame
             zg = lewm.encoder(obs_goal) # ex: tree
         current_goal_mse = self.objective_function(z1, zg).item()
-        print(f"planner: encoded obs {tuple(z1.shape)}, goal {tuple(zg.shape)}")
 
         best_z_pred_hist = None # store best prediction embedding
         best_score = None
         for cem_iter in range(self.max_iter):
-            print(
-                f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
-                f"rolling out {self.n_samples} samples (H={self.horizon})"
-            )
-
             # 1. Action sampling: sample 300 candidate action samples (n_samples)
             #   each sample contains action sequences up to time horizon (H)
             samples = np.zeros((self.n_samples, self.horizon, self.action_dim))
@@ -147,17 +140,9 @@ class Planner:
                         [latent[sample_offset:sample_offset + 1] for latent in z_pred_hist]
                     )
 
-                    if (sample_idx + 1) % 50 == 0 or sample_idx + 1 == self.n_samples:
-                        print(
-                            f"Planner iteration: {cem_iter + 1}/{self.max_iter}: "
-                            f"{sample_idx + 1}/{self.n_samples} rollouts scored"
-                        )
-
             #  update camera distribution parameters based on elites
             elite_idx = np.argsort(scores)[:self.n_elites]
             elites = samples[elite_idx]
-            top5 = [scores[i] for i in elite_idx[:5]]
-            print(f"top 5 best scores: {', '.join(f'{s:.4f}' for s in top5)}")
             mu = elites[..., 8:].mean(axis=0)
             sigma = elites[..., 8:].std(axis=0) + 1e-6
             # update action probabilities based on elites
@@ -167,7 +152,6 @@ class Planner:
             best_elite_idx = elite_idx[0]
             best_score = scores[best_elite_idx]
             best_z_pred_hist = rollout_hists[best_elite_idx]
-            print(f"Planner iteration: {cem_iter + 1}/{self.max_iter}: {best_score:.4f}")
 
         # 4. Action selection: return the mean of elites
         z_H = best_z_pred_hist[-1]
@@ -187,12 +171,5 @@ class Planner:
             "sigma": sigma,
             "p": p,
         }
-        # print(
-        #     f"FINAL SCORE ======"
-        #     f"current_goal_mse={planning_losses['current_goal_mse']:.4f},"
-        #     f"cem_best_cost={planning_losses['cem_best_cost']:.4f}, "
-        #     f"final_goal_mse={planning_losses['final_goal_mse']:.4f}"
-        # )
-        
         # return best action sequence
         return samples[best_elite_idx], planning_losses, distribution_params

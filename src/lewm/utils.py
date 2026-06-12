@@ -1,8 +1,40 @@
 import numpy as np
 import torch
 import h5py
+from PIL import Image
+from torchvision import transforms
 
 from lewm.models.lewm import LeWM
+
+
+def recvall(sock, nbytes):
+    """Receive exactly nbytes from a socket; None if the peer closed."""
+    data = b""
+    while len(data) < nbytes:
+        chunk = sock.recv(nbytes - len(data))
+        if not chunk:
+            return None
+        data += chunk
+    return data
+
+
+def bytes_to_image(frame):
+    """Raw 64x64x3 malmo frame bytes -> PIL image."""
+    image = np.frombuffer(frame, dtype=np.uint8).reshape((64, 64, 3))
+    return Image.fromarray(image)
+
+
+def make_transform(image_size):
+    """Resize -> tensor transform for the encoder."""
+    return transforms.Compose([
+        transforms.Resize((image_size, image_size)),
+        transforms.ToTensor(),
+    ])
+
+
+def process_frame_pixels(transform, frame):
+    """Raw malmo frame -> (1,3,H,W) tensor in 0-255 range (matches encoder training)."""
+    return transform(bytes_to_image(frame)).unsqueeze(0) * 255.0
 
 def normalize_camera(action_t, cam_mean, cam_std):
     """
@@ -72,8 +104,9 @@ def normalize_columns(dataset:str, col: int, target_col: str):
     
     return transform
 
-def load_trained_lewm(cfg, checkpoint, device=None):
-    lewm_model = LeWM(
+def build_lewm(cfg, device=None):
+    """Construct a LeWM with the architecture from cfg (weights random-initialized)."""
+    model = LeWM(
         image_size=cfg.vit.image_size,
         patch_size=cfg.vit.patch_size,
         embedding_dim=cfg.vit.embedding_dim,
@@ -92,9 +125,22 @@ def load_trained_lewm(cfg, checkpoint, device=None):
         factor=cfg.sigreg.factor,
         phi=cfg.sigreg.phi,
     )
-    lewm_model.load_state_dict(checkpoint["model_state_dict"])
-    lewm_model.eval()
     if device is not None:
-        lewm_model = lewm_model.to(device)
+        model = model.to(device)
+    return model
+
+
+def load_trained_lewm(cfg, checkpoint, device, strict=True):
+    lewm_model = build_lewm(cfg)
+    result = lewm_model.load_state_dict(checkpoint["model_state_dict"], strict=strict)
+    if not strict:
+        allowed_missing = {
+            "inverse_dynamics.0.weight",
+            "inverse_dynamics.0.bias",
+            "inverse_dynamics.2.weight",
+            "inverse_dynamics.2.bias",
+        }
+
+    lewm_model.eval().to(device)
 
     return lewm_model

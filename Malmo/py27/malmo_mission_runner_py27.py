@@ -120,7 +120,7 @@ episode = 0
 try:
     while True:
         episode += 1
-        print(f"=== Mission episode {episode} ===")
+        print("=== Mission {0} ===".format(episode))
         
         world_state = start_mission()
         if world_state is None:
