@@ -64,6 +64,7 @@ def run_evals(cfg: DictConfig):
     checkpoint = torch.load(repo_path(cfg.paths.best_model), map_location="cpu")
     lewm_model = load_trained_lewm(cfg, checkpoint, device)
 
+    # Load probe dataset
     target_names = ("x", "y", "z", "yaw", "pitch")
     probe_dataset = MalmoProbeDataset(
         repo_path(cfg.paths.fixtures_dir, "random_malmo_001.pkl"),
@@ -71,78 +72,74 @@ def run_evals(cfg: DictConfig):
         device=device,
         batch_size=cfg.probe.batch_size,
     )
+
+    # Build target values from ground truth physics stats
     targets = torch.stack([
         torch.tensor([float(stat[key]) for key in target_names], dtype=torch.float32)
         for stat in probe_dataset.stats
     ])
+    
+    # Split dataset
     num_samples = len(probe_dataset)
     indices = torch.randperm(num_samples, generator=torch.Generator().manual_seed(42))
     train_end = int(0.70 * num_samples)
     val_end = int(0.85 * num_samples)
     train_idx = indices[:train_end]
-    test_idx = indices[val_end:]
+    val_idx = indices[val_end:]
     
+    # pass in normalized targets to the probe
+    # targets must be normalized at eval time since the probe was trained on normalized targets
     target_mean = targets[train_idx].mean(dim=0, keepdim=True)
     target_std = targets[train_idx].std(dim=0, keepdim=True).clamp_min(1e-6)
     regression_targets = (targets - target_mean) / target_std
-    target_position = cfg.env.configs.multi_tree_navigation.target_position
-    distances = torch.sqrt((targets[:, 0] - target_position[0]) ** 2 + (targets[:, 2] - target_position[1]) ** 2)
-    class_targets = (distances <= cfg.planner.success_distance).float().unsqueeze(1)
-    
-    eval_data = {
-        "latents": probe_dataset.latents[test_idx],
-        "targets": regression_targets[test_idx],
-    }
-    class_eval_data = {
-        "latents": probe_dataset.latents[test_idx],
-        "targets": class_targets[test_idx],
+    regression_eval_data = {
+        "latents": probe_dataset.latents[val_idx],
+        "targets": regression_targets[val_idx],
     }
 
-    # Load trained probe
-    probe = LinearRegressionProbe(hidden_dim=cfg.vit.embedding_dim, output_dim=len(target_names)).to(device)
-    probe.load_state_dict(torch.load(
+    # Load trained regression probe
+    regression_probe = LinearRegressionProbe(hidden_dim=cfg.vit.embedding_dim, output_dim=len(target_names)).to(device)
+    regression_probe.load_state_dict(torch.load(
         repo_path(cfg.paths.final_models_dir, "linear_regression_probe.pt"),
-        map_location="cpu",
-    ))
-    class_probe = LinearClassificationProbe(hidden_dim=cfg.vit.embedding_dim, class_size=1).to(device)
-    class_probe.load_state_dict(torch.load(
-        repo_path(cfg.paths.final_models_dir, "linear_classification_probe.pt"),
-        map_location="cpu",
     ))
 
-    probe.eval()
+    # Evaluate regression probe
+    regression_probe.eval()
     with torch.no_grad():
-        preds = probe(eval_data["latents"].to(device)).cpu()
-    preds = preds * target_std + target_mean
-    eval_targets = eval_data["targets"] * target_std + target_mean
-
-    # evaluate each probe
+        regression_preds = regression_probe(regression_eval_data["latents"].to(device))
     metrics = {
         "regression": evaluate_probe(
-            probe,
-            [{"latent": eval_data["latents"], "target": eval_data["targets"]}],
+            regression_probe,
+            regression_eval_data,
             device,
             target_names,
             target_mean,
             target_std,
         ),
-        "classification": evaluate_probe(
-            class_probe,
-            [{"latent": class_eval_data["latents"], "target": class_eval_data["targets"]}],
-            device,
-            ("at_goal",),
-        ),
+        # "classification": evaluate_probe(
+        #     class_probe,
+        #     [{"latent": class_eval_data["latents"], "target": class_eval_data["targets"]}],
+        #     device,
+        #     ("at_goal",),
+        # ),
     }
+    
+    # TODO: classification probe
+    # class_probe = LinearClassificationProbe(hidden_dim=cfg.vit.embedding_dim, class_size=1).to(device)
+    # class_probe.load_state_dict(torch.load(
+    #     repo_path(cfg.paths.final_models_dir, "linear_classification_probe.pt"),
+    # ))
 
-    class_probe.eval()
-    with torch.no_grad():
-        class_preds = class_probe(class_eval_data["latents"].to(device)).cpu()
-    class_targets = class_eval_data["targets"]
+    # class_probe.eval()
+    # with torch.no_grad():
+    #     class_preds = class_probe(class_eval_data["latents"].to(device)).cpu()
+    # class_targets = class_eval_data["targets"]
 
     # Save scatter plots
     images_dir = repo_path(cfg.paths.evals_dir, "probes")
     images_dir.mkdir(parents=True, exist_ok=True)
-    plot_probe_predictions(eval_targets, preds, target_names, class_targets, class_preds, images_dir)
+    regression_preds = regression_preds * target_std + target_mean
+    plot_probe_predictions(regression_eval_data["targets"], regression_preds, target_names, images_dir)
 
     metrics_path = repo_path(cfg.paths.evals_dir, "probes", "probe_metrics.json")
     metrics_path.parent.mkdir(parents=True, exist_ok=True)

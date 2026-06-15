@@ -1,14 +1,10 @@
 """
 TreeChop benchmark on baselines and the trained LeWM model.
 
-Per episode (judged from the final stage):
-    SUCCESS: reached the tree AND hit the chop completion criterion -> nav + chop success
-    CHOP:    reached the tree, no block cut              -> nav success only
-    NAV:     never reached the tree                      -> neither
-
-LeWM agents reuse the real planner rollout (run_lewm_client.run_inference, wandb off);
-random is its own short loop. Outputs to cfg.paths.evals_dir/benchmark/:
-scoreboard.png, metrics_table.png, action_ablation.png, benchmark_results.json.
+Stages
+    CHOP: chop goal image (tree trunk) reached within MSE threshold
+    NAV: nav goal image (tree) reached within MSE threshold
+    SUCCESS: CHOP and NAV stages reached
 
 Run:
     python evals/benchmark.py
@@ -26,6 +22,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
+import torch.nn.functional as F
 from omegaconf import OmegaConf
 
 try:
@@ -45,65 +42,76 @@ from lewm.utils import (
 )
 
 sys.path.insert(0, str(repo_path("scripts")))
-from run_lewm_client import run_inference  # the planner rollout we reuse (no reimplementation)
+from run_lewm_client import run_evals
 
-ACTION_DIM = 10  # [fwd,left,back,right,jump,sneak,sprint,attack,yaw,pitch]
-MAX_EPISODES = 5
-C_NAV, C_CHOP, C_WARN = "#9bbf6a", "#2f7d32", "#cc7a2f"
-
+# models we will benchmark against each other
 AGENT_REGISTRY = {
     "random": dict(kind="random", display="Random"),
     "lewm_no_invdyn": dict(kind="lewm", checkpoint="no_invdyn", display="LeWM (no invdyn)"),
     "lewm_invdyn": dict(kind="lewm", checkpoint="invdyn", display="LeWM (invdyn)"),
 }
 
-
-def connect_with_retry(host, port, wait_timeout):
-    """Wait for the Malmo mission server, then return a connected socket (or None)."""
-    deadline = time.time() + wait_timeout
+def connect_with_retry():
+    """Wait for the Malmo mission server to run and connect socket to it."""
+    deadline = time.time() + 120 # 2 minutes
     while time.time() < deadline:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((host, port))
+            s.connect(("127.0.0.1", 25565))
             return s
         except OSError:
             time.sleep(2)
     return None
 
 
-def run_random_episode(conn, cfg, target, transform, seed):
-    """Random policy rollout"""
+def run_random_episode(conn, cfg, transform, enc, nav_goal_z, chop_goal_z, seed, device):
+    """Random policy as the baseline test"""
     rng = np.random.default_rng(seed)
     stage = "NAV"
-    min_dist = None
+    chop_stage_count = 0
     step = 0
     while step < cfg.planner.max_steps:
         frame = recvall(conn, 64 * 64 * 3)
         if frame is None:
             break
-        stats = pickle.loads(recvall(conn, struct.unpack(">I", recvall(conn, 4))[0]))
-        x, z = stats.get("x"), stats.get("z")
-        dist = math.dist((x, z), target) if x is not None and z is not None else float("inf")
-        min_dist = dist if min_dist is None else min(min_dist, dist)
-        if stage == "NAV" and dist < cfg.planner.success_distance:
+
+        _ = recvall(conn, struct.unpack(">I", recvall(conn, 4))[0])
+        obs = process_frame_pixels(transform, frame)
+        
+        # match success criteria of run_lewm_client
+        # if stage == "NAV" and distance_to_tree < cfg.planner.success_distance:
+        if stage == "NAV" and F.mse_loss(enc(obs.to(device)), nav_goal_z).item() < cfg.planner.nav_done_mse:
             stage = "CHOP"
-        action = np.zeros(ACTION_DIM)
+        if stage == "CHOP":
+            # start first chop
+            chop_stage_count += 1 if F.mse_loss(enc(obs.to(device)), chop_goal_z).item() < cfg.planner.chop_done_mse else 0
+            # continue chopping continuously for a minimum number of steps
+            if chop_stage_count >= cfg.planner.chop_done_patience:
+                stage = "SUCCESS"
+        if stage == "SUCCESS":
+            break
+        
+        # select random actions to move around
+        action = np.zeros(cfg.action_dim)
         action[:8] = rng.integers(0, 2, 8)
+        print(f"action selected for step {step}: {action}")
         conn.sendall(pickle.dumps(action.tolist()))
         step += 1
+    
     return {
         "status": stage,
         "nav_success": stage in ("CHOP", "SUCCESS"),
         "chop_success": stage == "SUCCESS",
-        "min_distance": None if min_dist is None else round(min_dist, 3),
         "steps": step,
     }
 
-
+# =============
+# Plotting functions
+# =============
 def plot_scoreboard(summary, out_path):
     agents = list(summary)
     x = np.arange(len(agents))
-    w = 0.38
+    w = 0.38 # width of the bars
     nav = [summary[a]["nav_rate"] * 100 for a in agents]
     chop = [summary[a]["chop_rate"] * 100 for a in agents]
     fig, ax = plt.subplots(figsize=(7, 5))
@@ -129,7 +137,7 @@ def plot_metrics_table(summary, out_path):
     rows = [
         ["Nav success (%)"] + [f"{summary[a]['nav_rate'] * 100:.0f}" for a in agents],
         ["Chop success (%)"] + [f"{summary[a]['chop_rate'] * 100:.0f}" for a in agents],
-        ["Min dist (blocks)"] + [f"{summary[a]['min_dist']:.1f}" for a in agents],
+        ["Min nav-MSE (latent)"] + [f"{summary[a]['nav_mse']:.3f}" for a in agents],
         ["N (episodes)"] + [str(summary[a]["n"]) for a in agents],
     ]
     fig, ax = plt.subplots(figsize=(2 + 2.2 * len(headers), 2.2))
@@ -147,76 +155,6 @@ def plot_metrics_table(summary, out_path):
     plt.close(fig)
 
 
-def run_action_ablation(cfg, model_path, target, transform, nav_goal, cam_mean, cam_std, device, out_path, episodes=2):
-    """SINGLE self-contained ablation: enabling left/right strafe or yaw/pitch camera on top of
-    forward-only planning degrades navigation. Runs its own planner rollout (so it can mask the
-    executed action), `episodes` per variant, and bar-plots the mean closest distance reached."""
-    model = load_trained_lewm(cfg, torch.load(model_path, map_location="cpu"), device, strict=False)
-    planner = Planner(
-        max_iter=cfg.planner.max_iter, n_samples=cfg.planner.n_samples, n_elites=cfg.planner.n_elites,
-        planning_horizon=cfg.planner.planning_horizon, action_dim=cfg.action_dim,
-        rollout_batch_size=cfg.planner.rollout_batch_size,
-    )
-    cm, cs = np.asarray(cam_mean).ravel(), np.asarray(cam_std).ravel()
-    bm = cfg.benchmark
-    variants = ["forward only", "+ strafe", "+ yaw/pitch"]
-    closest = {v: [] for v in variants}
-    reached = {v: 0 for v in variants}
-
-    for v in variants:
-        for ep in range(episodes):
-            conn = connect_with_retry(bm.host, bm.port, bm.connect_timeout)
-            if conn is None:
-                break
-            queue, params, min_d, step = [], None, float("inf"), 0
-            try:
-                while step < cfg.planner.max_steps:
-                    frame = recvall(conn, 64 * 64 * 3)
-                    if frame is None:
-                        break
-                    stats = pickle.loads(recvall(conn, struct.unpack(">I", recvall(conn, 4))[0]))
-                    x, z = stats.get("x"), stats.get("z")
-                    dist = math.dist((x, z), target) if x is not None and z is not None else float("inf")
-                    min_d = min(min_d, dist)
-                    if dist < cfg.planner.success_distance:
-                        reached[v] += 1
-                        break
-                    obs = process_frame_pixels(transform, frame)
-                    if not queue:
-                        warm = None if params is None else {
-                            k: np.concatenate([params[k][1:], params[k][-1:]], axis=0) for k in ("mu", "sigma", "p")
-                        }
-                        seq, _losses, params = planner.planner(model, obs, nav_goal, cam_mean, cam_std, cfg.sigreg.lambd, warm_start=warm)
-                        raw = np.asarray(seq, dtype=np.float64).reshape(-1, ACTION_DIM)
-                        for j, a in enumerate(planner_output_to_actions(seq, cam_mean, cam_std)):
-                            a = np.asarray(a, dtype=np.float64).copy()  # camera already zeroed here
-                            if v == "forward only":
-                                a[1] = a[3] = 0.0                       # drop strafe
-                            elif v == "+ yaw/pitch":
-                                a[1] = a[3] = 0.0                       # drop strafe, re-enable camera
-                                a[8] = raw[j, 8] * cs[0] + cm[0]
-                                a[9] = raw[j, 9] * cs[1] + cm[1]
-                            queue.append(a)                            # "+ strafe" keeps planner default
-                        queue.append(np.zeros(ACTION_DIM))
-                    conn.sendall(pickle.dumps(queue.pop(0).tolist()))
-                    step += 1
-            finally:
-                conn.close()
-            closest[v].append(None if min_d == float("inf") else min_d)
-
-    means = [float(np.mean([d for d in closest[v] if d is not None])) if any(d is not None for d in closest[v]) else 0.0 for v in variants]
-    rates = [reached[v] / episodes * 100 for v in variants]
-    fig, ax = plt.subplots(figsize=(7, 5))
-    ax.bar(np.arange(len(variants)), means, color=[C_CHOP, C_NAV, C_WARN])
-    for i, v in enumerate(variants):
-        ax.text(i, means[i] + 0.1, f"{means[i]:.1f} blk\n{rates[i]:.0f}% reach", ha="center", fontsize=9)
-    ax.set_xticks(np.arange(len(variants)))
-    ax.set_xticklabels(variants)
-    ax.set_ylabel("Mean closest distance to tree (blocks · lower = better)")
-    ax.set_title(f"Action-space ablation — LeWM planner (N={episodes}/variant)")
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=130)
-    plt.close(fig)
 
 def main():
     cfg = OmegaConf.load(repo_path("config", "lewm.yaml"))
@@ -226,62 +164,74 @@ def main():
         else "mps" if torch.backends.mps.is_available()
         else "cpu"
     )
-    episodes = min(int(bm.episodes), MAX_EPISODES)
-    env_cfg = cfg.env.configs[bm.env]
-    target = tuple(env_cfg.get("target_position") or env_cfg.target_positions[0])
+
+    # Models
+    lewm_model = load_trained_lewm(cfg, torch.load(repo_path(bm.models["invdyn"]), map_location="cpu"), device, strict=False)
+    @torch.no_grad()
+    def enc(obs):
+        return lewm_model.encoder(obs.to(device)).view(-1)
+
+    # Load and process goal frames
     transform = make_transform(cfg.vit.image_size)
     nav_goal = process_frame_pixels(transform, pickle.load(open(repo_path(cfg.paths.nav_goal_frame), "rb"))[0])
-    cam_mean, cam_std = get_cam_mean_std(str(repo_path(cfg.paths.data_dir, "mineRL_training.h5")))
+    chop_goal = process_frame_pixels(transform, pickle.load(open(repo_path(cfg.paths.chop_goal_frame), "rb"))[0])
+    nav_goal_z = enc(nav_goal)
+    chop_goal_z = enc(chop_goal)
 
-    print(f"ENV: {bm.env} | EPISODES: {episodes} | TARGET LOCATION: {target}")
+    print(f"ENV: {bm.env} | EPISODES: {bm.episodes}")
     results = {}
+    # process results for each model
     for name in bm.agents:
         print(f"======== Running {name} ==========")
         spec = AGENT_REGISTRY[name]
         eps = []
-        for ep in range(episodes):
+        for ep in range(bm.episodes):
             # Random policy rollout in malmo environment
             if spec["kind"] == "random":
-                conn = connect_with_retry(bm.host, bm.port, bm.connect_timeout)
+                conn = connect_with_retry()
                 if conn is None:
                     break
                 try:
-                    r = run_random_episode(conn, cfg, target, transform, seed=ep)
+                    r = run_random_episode(conn, cfg, transform, enc, nav_goal_z, chop_goal_z, seed=ep, device=device)
                 finally:
                     conn.close()
             # LeWM model rollout
             else:
-                r = run_inference(repo_path(bm.models[spec["checkpoint"]]), bm.env, use_wandb=False, eval_mode=True)
+                r = run_evals(repo_path(bm.models[spec["checkpoint"]]), bm.env, n_episodes=bm.episodes)
+            
+            # Add status to result dict
             r["nav_success"] = r["status"] in ("CHOP", "SUCCESS")
             r["chop_success"] = r["status"] == "SUCCESS"
             eps.append(r)
+            
             print(
                 f"  {name} | episode {ep + 1} | stage={r['status']} "
-                f"nav_success={r['nav_success']} chop_success={r['chop_success']} min_dist={r['min_distance']}"
+                f"nav_success={r['nav_success']} chop_success={r['chop_success']} nav_mse={r['nav_mse']}"
             )
+
         results[name] = eps
 
     # Report summary of results from each episode
+    # Results is a list of success statuses from each episode
     summary = {}
     for name, eps in results.items():
         n = len(eps)
-        dists = [e["min_distance"] for e in eps if e.get("min_distance") is not None]
+        nav_mses = [e["nav_mse"] for e in eps if e.get("nav_mse") is not None]
         summary[name] = {
             "n": n,
+            # Success rates for each stage
             "nav_rate": sum(e.get("status") in ("CHOP", "SUCCESS") for e in eps) / n if n else 0.0,
             "chop_rate": sum(e.get("status") == "SUCCESS" for e in eps) / n if n else 0.0,
-            "min_dist": float(np.mean(dists)) if dists else float("nan"),
+            "nav_mse": float(np.mean(nav_mses)) if nav_mses else float("nan"),
             "display": AGENT_REGISTRY[name]["display"],
         }
 
+    # Store and plot results
     out_dir = repo_path(cfg.paths.evals_dir, "benchmark")
     with open(out_dir / "benchmark_results.json", "w") as f:
         json.dump({"results": results, "summary": summary}, f, indent=2)
     plot_scoreboard(summary, out_dir / "scoreboard.png")
     plot_metrics_table(summary, out_dir / "metrics_table.png")
-    run_action_ablation(cfg, repo_path(bm.models["invdyn"]), target, transform, nav_goal,
-                        cam_mean, cam_std, device, out_dir / "action_ablation.png")
-
-
+    
 if __name__ == "__main__":
     main()

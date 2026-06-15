@@ -1,10 +1,10 @@
-# LeWorldModel (LeWM) for Minecraft - Learning
+# LeWorldModel (LeWM) for Minecraft - Learning Minecraft dynamics in latent space without pixel reconstruction
 
 We adapt LeWorldModel (LeWM) to perform simple Minecraft tasks, beginning with tree-chopping, using the Malmo sandbox environment.
 
-Minecraft by nature of its 3D design is more noisy than the primarily 2D and 3rd person POV tasks presented in the paper. This introduces new challenges with grounding the model in Minecraft physics.
+Minecraft by nature of its 3D design is more noisy than the primarily 2D tasks presented in the original paper. This introduces new challenges with grounding the model in Minecraft physics.
 
-LeWM Minecraft architecture
+![LeWM Minecraft architecture](assets/screenshot.png)
 
 Training data: [https://zenodo.org/records/12659939](https://zenodo.org/records/12659939)
 
@@ -12,6 +12,7 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 
 ## Table of Contents
 
+- [Introduction](#introduction)
 - [Getting started](#getting-started)
 - [Project structure](#project-structure)
 - [Current Art](#current-art)
@@ -26,6 +27,14 @@ Original paper: [https://arxiv.org/html/2603.19312v1](https://arxiv.org/html/260
 - [Training data](#training-data)
 - [Shape annotation key](#shape-annotation-key)
 - [Additional Reading](#additional-reading)
+
+## Introduction
+Recently, [world models](https://arxiv.org/abs/1803.10122) have been deemed a state-of-the-art approach to generating interactive environments that evolve based on user actions. However, most of these approaches are generative (that is, they require the model to successfully reconstruct the next video sample and require a massive amount of training data to succeed). A recent approach to this data problem has been the [Joint-Prediction Embedding Architecture (JEPA)](https://arxiv.org/html/2603.19312v1) implemented as LeWorldModel, which does not reconstruct each frame and instead rolls out predictions entirely in imagination/latent space.
+
+Our goal is to re-implement and adapt LeWM to perform simple tasks in Minecraft, a multivariate and egocentric 3D game that extends the LeWM’s primarily 2D and 3rd-person perspective benchmark tasks. We aim to develop a novel adaptation of LeWM to perform historically [expensive](https://www.findingtheta.com/blog/the-evolution-of-imagination-a-deep-dive-into-dreamerv3-and-its-conquest-of-minecraft) tasks in Minecraft and create a new benchmark for 3D, ego-centric tasks.
+
+We begin with tree-chopping, where the bot will (i) Navigate to a destination goal frame of a tree and (ii) perform the “attack” action continuously until the tree trunk is successfully broken. This bot should not require access to any special data to function; instead, like a regular player, it should be able to observe, make predictions about the future, and plan actions to accomplish a task only using the visual information on the screen. 
+
 
 ## Getting started
 
@@ -135,20 +144,21 @@ We situate **Le-WM-Minecraft** against three families of visuomotor Minecraft ag
 
 **OpenAI Video Pretraining model** - massive corpus of video training data trained with imitation learning to perform complex tasks. Similarly, they ground hte model using an inverse dynamics model so it can back-produce the actions in the state. However, this architecture does not condition the model on latents to predict the future. Instead, it follows a traditiaonl RL, reward-based policy which is expensive and dependent on human steering.
 
-**Reinforcement Learning** (MineRL) - 
+**Reinforcement Learning** (MineRL) - Focuses on training agents via behavioral cloning using expert human demonstrations. While effective for learning basic primitives, it struggles with long-horizon tasks and sample efficiency when explicit rewards or human guidance are absent.
 
 ### Generative Models
 
 Unlike LeWM these reconstruct in pixel space which focus resources on spatial details.
 
-**DreamerV3 -** learns a recurrent latent world model and was the first to collect diamonds in Minecraft from scratch  
-**Genie** - and video-diffusion agents generate controllable frames. 
+**DreamerV3 -** Learns a recurrent latent world model via pixel reconstruction. It was the first algorithm to collect diamonds from scratch in Minecraft without human demonstrations, but suffers from high training wall-clock time due to decoder overhead.
 
-**Stable Diffusion VAE** - 
+**Genie** - A spatiotemporal transformer-based model trained on unlabeled video data. Along with video-diffusion agents, it generates controllable future frames conditioned on latent actions, but faces substantial inference latency that limits real-time planning.
+
+**Stable Diffusion VAE** - Utilizes an encoder-decoder architecture to compress images into a low-dimensional latent space. While it excels at preserving complex visual textures, utilizing it for autoregressive world modeling often introduces severe compounding artifacts and frame hallucination over long horizons.
 
 ### Self Supervised Models
 
-**DINO-WM** - 
+**DINO-WM** - Leverages a frozen, self-supervised DINOv2 vision transformer to extract rich semantic features without pixel decoding. By building a world model on top of these representations, it focuses purely on transition dynamics, though it remains vulnerable to planning failures if the frozen encoder fails to capture task-critical spatial coordinates like lateral orientation or 3D obstacle geometry.
 
 LeWM belongs to the **self-supervised, joint-embedding predictive** family (I-JEPA, V-JEPA, DINO-WM): instead of reconstructing pixels, the model predicts *future embeddings* in latent space, so the representation keeps only what is predictable and control-relevant. Frozen self-supervised encoders like **DINOv2** are the strongest behavioral-cloning backbones on TreeChop (32%), which motivates pairing a self-supervised representation with a latent world model and planner — the LeWM approach we adapt here.
 

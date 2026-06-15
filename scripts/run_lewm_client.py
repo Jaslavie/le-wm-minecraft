@@ -47,6 +47,39 @@ def recvall(sock, nbytes):
         data += chunk
     return data
 
+def print_metrics_dashboard(metric_steps, latent_goal_mses, distance_by_step, planning_times, planning_time_steps, logs_dir):
+    output_path = logs_dir / f"{model_path.stem}_mse_dashboard.png"
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
+    ax1.plot(metric_steps, latent_goal_mses, marker="x", label="Latent MSE to goal")
+    ax1.set_xlabel("Planning step")
+    ax1.set_ylabel("MSE")
+    ax1.set_title("Latent distance to goal")
+    ax1.legend()
+    
+    # Distance to tree
+    ax2.plot(*zip(*distance_by_step), marker="o", color="green", label="Distance to tree")
+    ax2.axhline(cfg.planner.success_distance, color="red", ls="--", label="Success threshold")
+    ax2.set_xlabel("Planning step")
+    ax2.set_ylabel("Blocks")
+    ax2.set_title("Real distance to tree")
+    ax2.legend()
+
+    # Planning time
+    ax3.plot(planning_time_steps, planning_times, marker="o", label="Planning time")
+    ax3.plot(
+        planning_time_steps,
+        [sum(planning_times[:i]) / i for i in range(1, len(planning_times) + 1)],
+        label="Average planning time",
+    )
+    ax3.set_xlabel("Planning step")
+    ax3.set_ylabel("Seconds")
+    ax3.set_title("Planning runtime")
+    ax3.legend()
+    fig.tight_layout()
+    fig.savefig(output_path)
+    plt.close(fig)
+    return str(output_path)
+        
 def run_inference(
     model_path: str,
     env_name: str,
@@ -128,6 +161,7 @@ def run_inference(
     # We use this to determine if chopping is complete by computing the latent MSE
     with torch.no_grad():
         chop_goal_z = enc(chop_goal_obs)
+        nav_goal_z = enc(goal_obs)
 
     # Initialize logging directory
     logs_dir = repo_path(cfg.paths.logs_dir)
@@ -156,10 +190,7 @@ def run_inference(
     distance_by_step = []
     # initialize warm start for first plan
     last_distribution_params = None
-    # episode is a success if the agent ever reaches the target distance
-    episode_success = False
-    # eval-mode telemetry (unused by the deployment path)
-    min_distance = float("inf")
+    nav_mse = float("inf")
     chop_done_ct = 0
     chop_stage_steps = 0
     # Neutral action so Malmo does not keep moving during long CEM replans.
@@ -184,22 +215,9 @@ def run_inference(
             failed = True
             continue
 
-        # Pair with lewm_integration_layer_py27: frame, then length-prefixed stats.
         stats_len = struct.unpack(">I", recvall(client, 4))[0]
         agent_stats = pickle.loads(recvall(client, stats_len))
 
-        # Objective is to decrease euclidean distance to target
-        agent_x = agent_stats.get("x")
-        agent_z = agent_stats.get("z")
-        # a tick can arrive without position stats; treat it as "unknown distance"
-        if agent_x is None or agent_z is None:
-            distance_to_tree = float("inf")
-        else:
-            distance_to_tree = float(math.dist((agent_x, agent_z), target_position))
-            if distance_to_tree < cfg.planner.success_distance:
-                episode_success = True
-            min_distance = min(min_distance, distance_to_tree)
-        
         # Save frames for video creation
         frame_np = np.frombuffer(frame, dtype=np.uint8).reshape(64, 64, 3).copy()
         frames.append(frame_np)
@@ -207,8 +225,9 @@ def run_inference(
         # Preprocess current observation (1, 3, 64, 64)
         obs = process_frame_pixels(transform, frame)
 
-        # Switch stage from nav to chop when close enough to the current tree target
-        if stage == "NAV" and distance_to_tree < cfg.planner.success_distance:
+        # Switch to CHOP when the frame reaches the MSE threshold
+        # if stage == "NAV" and distance_to_tree < cfg.planner.success_distance:
+        if stage == "NAV" and F.mse_loss(enc(obs), nav_goal_z).item() < cfg.planner.nav_done_mse:
             stage = "CHOP"
             action_queue = []
             last_distribution_params = None
@@ -219,20 +238,12 @@ def run_inference(
 
         # Chop success is judged by latent MSE.
         if stage == "CHOP":
-            chop_stage_steps += 1
-            current_chop_mse = F.mse_loss(enc(obs), chop_goal_z).item()
-            if current_chop_mse < cfg.planner.chop_done_mse:
-                chop_done_ct += 1
-            else:
-                chop_done_ct = 0
-            if (
-                chop_done_ct >= cfg.planner.chop_done_patience
-                or chop_stage_steps >= cfg.planner.chop_max_steps
-            ):
+            # start first chop
+            chop_stage_count += 1 if F.mse_loss(enc(obs), chop_goal_z).item() < cfg.planner.chop_done_mse else 0
+            # continue chopping continuously for a minimum number of steps
+            if chop_stage_count >= cfg.planner.chop_done_patience:
                 stage = "SUCCESS"
-
         if stage == "SUCCESS":
-            print(f"stage-SUCCESS at step {step}")
             break
 
         # Plan when action queue is empty
@@ -316,10 +327,8 @@ def run_inference(
                 )
             }
 
+            metrics["control/nav_mse"] = nav_mse
             metrics["control/distance_to_tree"] = distance_to_tree
-            metrics["control/at_target_distance"] = float(
-                distance_to_tree < cfg.planner.success_distance
-            )
 
             # Plot planner objective and planning runtime.
             fig, (ax1, ax2) = plt.subplots(1, 2)
@@ -335,6 +344,7 @@ def run_inference(
             # Collect metrics for plotting
             metric_steps.append(step)
             latent_goal_mses.append(current_goal_mse)
+            nav_mse_by_step.append((step, nav_mse))
             distance_by_step.append((step, distance_to_tree))
 
         # Send actions to Malmo to perform
@@ -363,7 +373,7 @@ def run_inference(
             # success criteria
             "nav_success": stage in ("CHOP", "SUCCESS"),
             "chop_success": stage == "SUCCESS",
-            "min_distance": None if min_distance == float("inf") else round(min_distance, 3),
+            "min_nav_mse": None if min_nav_mse == float("inf") else round(min_nav_mse, 3),
             "steps": step,
             "avg_planning_time": avg_planning_time if planning_times else None,
         }
@@ -374,43 +384,11 @@ def run_inference(
         return None
     else:
         # Return MSE and other graphs in a single image
-        output_path = logs_dir / f"{model_path.stem}_mse_dashboard.png"
-        fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(15, 4))
-        ax1.plot(metric_steps, latent_goal_mses, marker="x", label="Latent MSE to goal")
-        ax1.set_xlabel("Planning step")
-        ax1.set_ylabel("MSE")
-        ax1.set_title("Latent distance to goal")
-        ax1.legend()
-
-        if distance_by_step:
-            ax2.plot(*zip(*distance_by_step), marker="o", color="green", label="Distance to tree")
-            ax2.axhline(cfg.planner.success_distance, color="red", ls="--", label="Success threshold")
-        ax2.set_xlabel("Planning step")
-        ax2.set_ylabel("Blocks")
-        ax2.set_title("Real distance to tree")
-        ax2.legend()
-
-        if planning_times:
-            ax3.plot(planning_time_steps, planning_times, marker="o", label="Planning time")
-            ax3.plot(
-                planning_time_steps,
-                [sum(planning_times[:i]) / i for i in range(1, len(planning_times) + 1)],
-                label="Average planning time",
-            )
-        ax3.set_xlabel("Planning step")
-        ax3.set_ylabel("Seconds")
-        ax3.set_title("Planning runtime")
-        ax3.legend()
-        fig.tight_layout()
-        fig.savefig(output_path)
-        plt.close(fig)
-        return str(output_path)
+        print_metrics_dashboard(metric_steps, latent_goal_mses, distance_by_step, planning_times, planning_time_steps, logs_dir)
 
 def run_evals(model_path, env_name, n_episodes=100):
     """
-    Run n_episodes rollouts sequentially (single Malmo server -> one socket, so
-    episodes can't truly run in parallel) with wandb/plotting disabled, then
-    print and return the success ratio.
+    Run n_episodes of rollouts without wandb
     """
     successes = 0
     for ep in range(n_episodes):
@@ -424,8 +402,8 @@ def run_evals(model_path, env_name, n_episodes=100):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--evals", action="store_true", help="Run an eval suite (no wandb) and report the success ratio")
-    parser.add_argument("--episodes", type=int, default=10, help="Number of episodes for --evals")
+    parser.add_argument("--evals", action="store_true", help="Run rollouts without wandb")
+    parser.add_argument("--episodes", type=int, default=10, help="Set number of rollouts to run")
     args = parser.parse_args()
 
     # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),

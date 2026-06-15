@@ -1,0 +1,493 @@
+{
+  "results": {
+    "random": [
+      {
+        "status": "NAV",
+        "nav_success": false,
+        "chop_success": false,
+        "min_nav_mse": 1.178,
+        "steps": 200
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.708,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.703,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.708,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.711,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.708,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.706,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.812,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.715,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.734,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.726,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.706,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.729,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.708,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.672,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.715,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.741,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.721,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.708,
+        "steps": 14
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.717,
+        "steps": 14
+      }
+    ],
+    "lewm_no_invdyn": [
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.945,
+        "steps": 14,
+        "avg_planning_time": 3.367520603998855
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.943,
+        "steps": 14,
+        "avg_planning_time": 3.150354936995427
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.958,
+        "steps": 14,
+        "avg_planning_time": 3.144121000004816
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.927,
+        "steps": 14,
+        "avg_planning_time": 3.1940784999969765
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.984,
+        "steps": 14,
+        "avg_planning_time": 3.222723187493102
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.963,
+        "steps": 14,
+        "avg_planning_time": 3.184050729498267
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.932,
+        "steps": 14,
+        "avg_planning_time": 3.2656766250001965
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.991,
+        "steps": 14,
+        "avg_planning_time": 3.28103079200082
+      },
+      {
+        "status": "NAV",
+        "nav_success": false,
+        "chop_success": false,
+        "min_nav_mse": 1.174,
+        "steps": 200,
+        "avg_planning_time": 3.276494786260351
+      },
+      {
+        "status": "NAV",
+        "nav_success": false,
+        "chop_success": false,
+        "min_nav_mse": 1.012,
+        "steps": 200,
+        "avg_planning_time": 3.2255863153474387
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.94,
+        "steps": 14,
+        "avg_planning_time": 3.2797849999915343
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.999,
+        "steps": 14,
+        "avg_planning_time": 3.3208350000059
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.943,
+        "steps": 14,
+        "avg_planning_time": 3.223644729499938
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.903,
+        "steps": 14,
+        "avg_planning_time": 3.2553887499962
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.925,
+        "steps": 14,
+        "avg_planning_time": 3.2611615204950795
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.939,
+        "steps": 14,
+        "avg_planning_time": 3.213439061997633
+      },
+      {
+        "status": "NAV",
+        "nav_success": false,
+        "chop_success": false,
+        "min_nav_mse": 1.146,
+        "steps": 200,
+        "avg_planning_time": 3.210619713695411
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.926,
+        "steps": 14,
+        "avg_planning_time": 3.4129472084969166
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.95,
+        "steps": 14,
+        "avg_planning_time": 3.352110083498701
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.951,
+        "steps": 14,
+        "avg_planning_time": 3.3248834584956057
+      }
+    ],
+    "lewm_invdyn": [
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.795,
+        "steps": 14,
+        "avg_planning_time": 3.6486167705006665
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.72,
+        "steps": 14,
+        "avg_planning_time": 3.385951666998153
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.823,
+        "steps": 14,
+        "avg_planning_time": 3.262258479000593
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.731,
+        "steps": 14,
+        "avg_planning_time": 3.2027245209974353
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.717,
+        "steps": 14,
+        "avg_planning_time": 3.2270158954997896
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.726,
+        "steps": 14,
+        "avg_planning_time": 3.295136687498598
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.733,
+        "steps": 14,
+        "avg_planning_time": 3.5935920209958567
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.858,
+        "steps": 14,
+        "avg_planning_time": 3.4852016665026895
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.921,
+        "steps": 14,
+        "avg_planning_time": 3.2590351254912093
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.716,
+        "steps": 14,
+        "avg_planning_time": 3.239960124999925
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.74,
+        "steps": 14,
+        "avg_planning_time": 3.3926412709915894
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.814,
+        "steps": 14,
+        "avg_planning_time": 3.291882416502631
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.708,
+        "steps": 14,
+        "avg_planning_time": 3.577260916499654
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.743,
+        "steps": 14,
+        "avg_planning_time": 3.195289582996338
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.883,
+        "steps": 14,
+        "avg_planning_time": 3.723132416002045
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.734,
+        "steps": 14,
+        "avg_planning_time": 3.391834062997077
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.731,
+        "steps": 14,
+        "avg_planning_time": 3.21874106299947
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.729,
+        "steps": 14,
+        "avg_planning_time": 3.2058521039944026
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.717,
+        "steps": 14,
+        "avg_planning_time": 3.2745884579926496
+      },
+      {
+        "status": "SUCCESS",
+        "nav_success": true,
+        "chop_success": true,
+        "min_nav_mse": 0.729,
+        "steps": 14,
+        "avg_planning_time": 3.2523945624998305
+      }
+    ]
+  },
+  "summary": {
+    "random": {
+      "n": 20,
+      "nav_rate": 0.95,
+      "chop_rate": 0.95,
+      "min_nav_mse": 0.7413000000000001,
+      "display": "Random"
+    },
+    "lewm_no_invdyn": {
+      "n": 20,
+      "nav_rate": 0.85,
+      "chop_rate": 0.85,
+      "min_nav_mse": 0.9725499999999998,
+      "display": "LeWM (no invdyn)"
+    },
+    "lewm_invdyn": {
+      "n": 20,
+      "nav_rate": 1.0,
+      "chop_rate": 1.0,
+      "min_nav_mse": 0.7634,
+      "display": "LeWM (invdyn)"
+    }
+  }
+}

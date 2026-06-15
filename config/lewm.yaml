@@ -80,9 +80,6 @@ benchmark:
     - lewm_invdyn
   episodes: 20
   env: single_tree_navigation
-  host: localhost
-  port: 25565
-  connect_timeout: 120
   models:
     no_invdyn: artifacts/final_models/best_model_resnet.pt
     invdyn: artifacts/final_models/best_model_resnet_invdyn.pt
@@ -95,13 +92,13 @@ planner:
   rollout_batch_size: 64
   planning_horizon: 8
   max_steps: 200
-  success_threshold: 0.5 # success threshold for each goal
+  nav_done_mse: 1.0 # mse threshold
   success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
-  chop_done_mse: 0.05 # latent MSE threshold to determine if chopping is complete
-  chop_done_patience: 3 # consecutive low-MSE steps before chop is complete
-  chop_max_steps: 15 # always advance after this number of chop steps
+  chop_done_mse: 0.05 
+  chop_done_patience: 3  # force agent to chop for  a minimum number of steps
+  chop_max_steps: 15 
 
-# == Malmo env/task settings ==
+# == Malmo env/task settings == 
 env:
   configs:
     seed_world:

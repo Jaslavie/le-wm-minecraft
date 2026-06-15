@@ -200,9 +200,11 @@ def run_probe_training(
     target_mean = targets[train_idx].mean(dim=0, keepdim=True)
     target_std = targets[train_idx].std(dim=0, keepdim=True).clamp_min(1e-6)
     probe_dataset.targets = (targets - target_mean) / target_std
-    target_position = cfg.env.configs.multi_tree_navigation.target_position
-    distances = torch.sqrt((targets[:, 0] - target_position[0]) ** 2 + (targets[:, 2] - target_position[1]) ** 2)
-    probe_dataset.class_targets = (distances <= cfg.planner.success_distance).float().unsqueeze(1)
+    
+    # TODO: Classification-specific targets
+    # target_position = cfg.env.configs.multi_tree_navigation.target_position
+    # distances = torch.sqrt((targets[:, 0] - target_position[0]) ** 2 + (targets[:, 2] - target_position[1]) ** 2)
+    # probe_dataset.class_targets = (distances <= cfg.planner.success_distance).float().unsqueeze(1)
 
     train_loader = DataLoader(Subset(probe_dataset, train_idx.tolist()), batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(Subset(probe_dataset, val_idx.tolist()), batch_size=batch_size, shuffle=False)
@@ -224,21 +226,21 @@ def run_probe_training(
     probe_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(trained_probe.state_dict(), probe_path)
 
-    class_probe = LinearClassificationProbe(
-        hidden_dim=probe_dataset.latents.shape[-1],
-        class_size=1,
-    ).to(device)
-    trained_class_probe = train_probe(
-        probe=class_probe,
-        train_loader=train_loader,
-        device=device,
-        criterion=nn.BCELoss(),
-        target_key="class_target",
-        val_loader=val_loader,
-        epochs=epochs,
-    )
-    class_probe_path = repo_path(cfg.paths.final_models_dir, "linear_classification_probe.pt")
-    torch.save(trained_class_probe.state_dict(), class_probe_path)
+    # class_probe = LinearClassificationProbe(
+    #     hidden_dim=probe_dataset.latents.shape[-1],
+    #     class_size=1,
+    # ).to(device)
+    # trained_class_probe = train_probe(
+    #     probe=class_probe,
+    #     train_loader=train_loader,
+    #     device=device,
+    #     criterion=nn.BCELoss(),
+    #     target_key="class_target",
+    #     val_loader=val_loader,
+    #     epochs=epochs,
+    # )
+    # class_probe_path = repo_path(cfg.paths.final_models_dir, "linear_classification_probe.pt")
+    # torch.save(trained_class_probe.state_dict(), class_probe_path)
 
     return trained_probe, trained_class_probe
 
@@ -247,7 +249,7 @@ def run_probe_training(
 # =================
 def evaluate_probe(
     probe: LinearRegressionProbe | LinearClassificationProbe,
-    data_loader,
+    data_loader, # in the format of {latent: (N, D), target: (N, 1)}
     device: torch.device,
     target_names,
     target_mean=None,
@@ -260,17 +262,19 @@ def evaluate_probe(
     preds = []
     targets = []
 
+    # process normalized targets from input
     with torch.no_grad():
         for batch in data_loader:
             z = batch["latent"].to(device)
             target = batch["target"].to(device)
             
-            preds.append(probe(z).cpu())
-            targets.append(target.cpu())
+            preds.append(probe(z).cpu()) # probe prediction
+            targets.append(target.cpu()) # ground truth target
 
     preds = torch.cat(preds, dim=0)
     targets = torch.cat(targets, dim=0)
-
+    
+    # denormalize targets and predictions from input
     if target_mean is not None and target_std is not None:
         preds = preds * target_std + target_mean
         targets = targets * target_std + target_mean
@@ -295,7 +299,6 @@ def evaluate_probe(
 
 if __name__ == "__main__":
     cfg = OmegaConf.load("config/lewm.yaml")
-    
     device = torch.device(
         "cuda" if torch.cuda.is_available()
         else "mps" if torch.backends.mps.is_available()
@@ -303,11 +306,10 @@ if __name__ == "__main__":
     )
     checkpoint = torch.load(repo_path(cfg.paths.best_model), map_location="cpu")
     lewm_model = load_trained_lewm(cfg, checkpoint, device)
-    encoder = lewm_model.encoder
     
     run_probe_training(
         cfg=cfg,
-        encoder=encoder,
+        encoder=lewm_model.encoder,
         device=device,
         epochs=cfg.probe.epochs,
         batch_size=cfg.probe.batch_size,
