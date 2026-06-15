@@ -22,6 +22,7 @@ from omegaconf import OmegaConf
 from lewm.planning.planner import Planner
 from lewm.paths import repo_path
 from lewm.utils import get_cam_mean_std, load_trained_lewm, planner_output_to_actions
+from lewm.models import LeWM
 
 def bytes_to_image(frame):
     image = np.frombuffer(frame, dtype=np.uint8)
@@ -142,7 +143,7 @@ def run_inference(
         else "cpu"
     )
     # Initialize models (strict=False tolerates checkpoints without the inverse-dynamics head)
-    lewm_model = load_trained_lewm(cfg, checkpoint, device, strict=False)
+    lewm_model = load_trained_lewm(cfg, checkpoint, device)#, strict=False)
 
     @torch.no_grad()
     def enc(obs):
@@ -244,6 +245,11 @@ def run_inference(
             if chop_stage_count >= cfg.planner.chop_done_patience:
                 stage = "SUCCESS"
         if stage == "SUCCESS":
+<<<<<<< HEAD:scripts/run_lewm_client.py
+=======
+            print(f"stage-SUCCESS at step {step}")
+            # stage = "NAV"
+>>>>>>> 573b550a30461d53fd372ed05af023e207087cf1:src/run_lewm_client.py
             break
 
         # Plan when action queue is empty
@@ -408,7 +414,7 @@ if __name__ == "__main__":
 
     # model_path=repo_path("artifacts", "final_models", "best_model_custom_vit.pt"),
     model_path = repo_path("artifacts", "final_models", "best_model_resnet_invdyn.pt")
-    env_name = os.environ.get("LEWM_ENV", "single_tree_navigation")
+    env_name = os.environ.get("LEWM_ENV", "seed_world")
 
     if args.evals:
         run_evals(model_path, env_name, n_episodes=args.episodes)

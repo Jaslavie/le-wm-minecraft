@@ -78,7 +78,7 @@ benchmark:
     - random
     - lewm_no_invdyn
     - lewm_invdyn
-  episodes: 20
+  episodes: 3
   env: single_tree_navigation
   models:
     no_invdyn: artifacts/final_models/best_model_resnet.pt
@@ -94,17 +94,14 @@ planner:
   max_steps: 200
   nav_done_mse: 1.0 # mse threshold
   success_distance: 4.0 # minecraft's block interaction threshold is 4.5 blocks
-  chop_done_mse: 0.05 
-  chop_done_patience: 3  # force agent to chop for  a minimum number of steps
-  chop_max_steps: 15 
+  nav_done_mse: 1.0
+  chop_done_mse: 0.05 # latent MSE threshold to determine if chopping is complete
+  chop_done_patience: 3 # consecutive low-MSE steps before chop is complete
+  chop_max_steps: 15 # always advance after this number of chop steps
 
 # == Malmo env/task settings == 
 env:
   configs:
-    seed_world:
-      xml: Malmo/py27/environments/seed_world.xml
-      target_name: oak_tree
-      target_position: [0.0, 15.0]
     discrimination_test:
       xml: Malmo/py27/environments/discrimination_test.xml
       target_name: oak_tree
@@ -113,6 +110,18 @@ env:
       xml: Malmo/py27/environments/single_tree_navigation.xml
       target_name: oak_tree
       target_position: [0.0, 15.0]
+    single_raised_tree_navigation:
+      xml: Malmo/py27/environments/single_raised_tree_navigation.xml
+      target_name: oak_tree
+      target_position: [0.0, 15.0]
+    seed_world:
+      xml: Malmo/py27/environments/single_raised_tree_navigation.xml
+      # Oak tree
+      target_name: oak_tree #oak_tree
+      target_position: [173.0, 234.0] # [166.0, 234.0]
+      # # Birch tree
+      # target_name: birch_tree
+      # target_position: [166.0, 234.0]
     multi_tree_navigation:
       xml: Malmo/py27/environments/multi_tree_navigation.xml
       target_name: oak_tree
