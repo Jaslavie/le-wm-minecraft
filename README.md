@@ -36,6 +36,7 @@ On TreeChop tasks with a constrained action mask, we obtain a **20% success rate
 - [Training data](#training-data)
 - [Results](#results)
   - [Linear Probing](#linear-probing)
+- [Conclusion and Limitations](#conclusion-and-limitations)
 - [Getting started](#getting-started)
   - [Project structure](#project-structure)
   - [Running Malmo](#running-malmo)
